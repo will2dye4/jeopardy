@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any, Dict
 
 
 class Model:
@@ -61,3 +62,4 @@ class AnswerResponse(Model):
 @dataclass
 class Event(Model):
     event_type: str
+    payload: Dict[str, Any]

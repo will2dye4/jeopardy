@@ -8,7 +8,7 @@ import uuid
 
 from concurrent.futures import ThreadPoolExecutor as Pool
 from difflib import SequenceMatcher
-from threading import Lock
+from threading import RLock
 
 import requests
 
@@ -25,7 +25,7 @@ REMOVE_PUNCTUATION_TRANSLATIONS = {ord(char): None for char in string.punctuatio
 
 
 app = Flask(__name__)
-pool = Pool(4)
+pool = Pool(8)
 stemmer = EnglishStemmer()
 
 
@@ -35,40 +35,74 @@ class Game:
         self.clients = {}
         self.current_question = None
         self.in_progress = False
-        self.lock = Lock()
+        self.lock = RLock()
 
     def register_client(self, register_req):
         if register_req.client_id not in self.clients:
             self.clients[register_req.client_id] = register_req.address
+            event = Event(
+                event_type='NEW_PLAYER',
+                payload={'client_id': register_req.client_id}
+            )
+            pool.submit(self.notify_clients, event)
 
     def remove_client(self, client_id):
         if client_id in self.clients:
             del self.clients[client_id]
+            event = Event(
+                event_type='PLAYER_LEFT',
+                payload={'client_id': client_id}
+            )
+            pool.submit(self.notify_clients, event)
 
-    def notify_clients(self, event):
+    def notify_clients(self, event, exclude=None):
+        if exclude is None:
+            exclude = set()
         event_json = event.to_json()
-        for client_address in self.clients.values():
-            resp = requests.post(f'http://{client_address}/notify', json=event_json)
-            if not resp.ok:
-                print(f'Failed to notify client: {resp.text}')
+        for client_id, client_address in self.clients.items():
+            if client_id not in exclude:
+                resp = requests.post(f'http://{client_address}/notify', json=event_json)
+                if not resp.ok:
+                    print(f'Failed to notify client: {resp.text}')
 
-    def update_current_question(self, question):
+    def start(self):
         with self.lock:
-            self.current_question = question
-        if question is not None:
-            pool.submit(self.question_timeout, question.question_id)
+            if not self.in_progress:
+                pool.submit(self.notify_clients, Event(event_type='NEW_GAME', payload={}))
+                question = get_random_question()
+                if question is None:
+                    raise RuntimeError('Failed to fetch starting question')
+                self.in_progress = True
+                self.update_current_question(question)
+
+    def update_current_question(self, question, client_id=None):
+        with self.lock:
+            if self.current_question is None or question is None:
+                self.current_question = question
+                if question is not None:
+                    event = Event(
+                        event_type='NEW_QUESTION',
+                        payload=question.to_json()
+                    )
+                    exclude = {client_id} if client_id is not None else None
+                    pool.submit(self.notify_clients, event, exclude=exclude)
+                    pool.submit(self.question_timeout, question)
 
     def is_current_question(self, question_id):
         return self.current_question is not None and self.current_question.question_id == question_id
 
-    def question_timeout(self, question_id):
+    def question_timeout(self, question):
         timeout = datetime.datetime.utcnow() + datetime.timedelta(seconds=30)
-        while self.is_current_question(question_id) and datetime.datetime.utcnow() < timeout:
+        while self.is_current_question(question.question_id) and datetime.datetime.utcnow() < timeout:
             time.sleep(0.1)
         with self.lock:
-            if self.is_current_question(question_id):
+            if self.is_current_question(question.question_id):
                 self.current_question = None
-                pool.submit(game.notify_clients, Event('QUESTION_TIMEOUT'))
+                event = Event(
+                    event_type='QUESTION_TIMEOUT',
+                    payload={'answer': question.answer}
+                )
+                pool.submit(game.notify_clients, event)
 
 
 game = Game()
@@ -108,27 +142,26 @@ def goodbye():
     return no_content()
 
 
+@app.route('/start', methods=['POST'])
+def start_game():
+    try:
+        game.start()
+    except RuntimeError as e:
+        return error(str(e))
+    return no_content()
+
+
 @app.route('/question')
 @to_json
 def get_question():
-    if game.current_question is not None:
-        return game.current_question
-    resp = requests.get('http://www.trivialbuzz.com/api/v1/questions/random.json')
-    if not resp.ok:
+    with game.lock:
+        if game.current_question is not None:
+            return game.current_question
+    question = get_random_question()
+    if question is None:
         return error('Failed to fetch question from TrivialBuzz API')
-    resp_json = resp.json()
-    if not resp_json:
-        return error('Received invalid response from TrivialBuzz API')
-    question_data = resp_json['question']
-    question = Question(
-        question_id=str(uuid.uuid4()),
-        text=question_data['body'][1:-1],
-        answer=question_data['response'],
-        category=question_data['category']['name'],
-        value=question_data['value']
-    )
-    game.update_current_question(question)
-    return question
+    game.update_current_question(question, get_client_id())
+    return game.current_question
 
 
 @app.route('/answer', methods=['POST'])
@@ -140,11 +173,40 @@ def submit_answer():
         answer = Answer.from_request(request)
     except (TypeError, ValueError) as e:
         return error(f'Failed to parse answer: {e}', status=400)
+
     correct = check_guess(answer.text, game.current_question.answer)
     if correct:
         # TODO update scores
         game.update_current_question(None)
+
+    event = Event(
+        event_type='NEW_ANSWER',
+        payload={
+            'answer': answer.text,
+            'client_id': get_client_id(),
+            'is_correct': correct
+        }
+    )
+    pool.submit(game.notify_clients, event)
+
     return AnswerResponse(correct)
+
+
+def get_random_question():
+    resp = requests.get('http://www.trivialbuzz.com/api/v1/questions/random.json')
+    if not resp.ok:
+        return None
+    resp_json = resp.json()
+    if not resp_json:
+        return None
+    question_data = resp_json['question']
+    return Question(
+        question_id=str(uuid.uuid4()),
+        text=question_data['body'][1:-1],
+        answer=question_data['response'],
+        category=question_data['category']['name'],
+        value=question_data['value']
+    )
 
 
 def check_guess(guess, correct_answer):
