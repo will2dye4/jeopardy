@@ -165,9 +165,7 @@ def check_guess(guess, correct_answer):
     processed_answer_tokens = [process_token(token) for token in correct_answer.split()]
     answer_tokens = [tok for tok in processed_answer_tokens if tok not in stopwords.words('english')]
     matched = set(guess_tokens).intersection(set(answer_tokens))
-    if len(matched) == len(answer_tokens):
-        return True
-    return False
+    return len(matched) == len(answer_tokens)
 
 
 def process_token(token):
