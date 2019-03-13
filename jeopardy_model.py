@@ -30,9 +30,20 @@ class ClientIDResponse(Model):
 
 
 @dataclass
+class ClientInfo(Model):
+    client_id: str
+    client_address: str
+    nick: str
+    correct_answers: int = 0
+    total_answers: int = 0
+    score: int = 0
+
+
+@dataclass
 class RegisterRequest(Model):
     address: str
     client_id: str
+    nick: str
 
 
 @dataclass

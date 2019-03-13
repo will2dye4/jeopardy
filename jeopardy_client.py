@@ -13,7 +13,7 @@ import requests
 from flask import Flask, request
 
 from flask_utils import no_content, to_json
-from jeopardy_model import Answer, AnswerResponse, ClientIDResponse, Event, Question, RegisterRequest
+from jeopardy_model import Answer, AnswerResponse, ClientIDResponse, ClientInfo, Event, Question, RegisterRequest
 
 
 SUPPRESS_FLASK_LOGGING = True
@@ -21,12 +21,15 @@ SUPPRESS_FLASK_LOGGING = True
 
 class JeopardyClient:
 
-    def __init__(self, server_address=None):
+    def __init__(self, server_address=None, nick=None):
         if server_address is None:
             server_address = os.getenv('JEOPARDY_SERVER_ADDRESS')
             if server_address is None:
                 raise ValueError('Must provide server_address or set JEOPARDY_SERVER_ADDRESS environment variable')
+        if nick is None:
+            nick = os.getenv('JEOPARDY_CLIENT_NICKNAME')
         self.client_id = str(uuid.uuid4())
+        self.nick = nick or self.client_id
         self.server_address = server_address
         self.server_session = requests.Session()
         self.server_session.headers.update({'X-Jeopardy-Client-ID': self.client_id})
@@ -60,7 +63,11 @@ class JeopardyClient:
         external_ip = subprocess.getoutput(r'ifconfig | grep -A3 en0 | grep -E "inet\b" | cut -d" " -f2')
         if not external_ip:
             raise RuntimeError('Failed to find external IP')
-        register_req = RegisterRequest(address=f'{external_ip}:{self.port}', client_id=self.client_id)
+        register_req = RegisterRequest(
+            address=f'{external_ip}:{self.port}',
+            client_id=self.client_id,
+            nick=self.nick
+        )
         resp = self.post('/register', json=register_req.to_json())
         if resp.ok:
             print('Registered with server')
@@ -70,10 +77,26 @@ class JeopardyClient:
     def goodbye(self):
         self.post('/goodbye')
 
+    def play(self):
+        self.start_game()
+        try:
+            while True:
+                user_input = input().strip()
+                if user_input == '/h':
+                    print('Type "/q" to get a new question. Enter your answer to check if it is correct.')
+                elif user_input == '/q':
+                    self.get_question()
+                elif user_input == '/s':
+                    self.show_stats()
+                else:
+                    self.answer(user_input)
+        except EOFError:
+            print()
+
     def start_game(self):
         resp = self.post('/start')
         if not resp.ok:
-            print(f'Failed to start game: {resp.text}')
+            raise RuntimeError(f'Failed to start game: {resp.text}')
 
     def get_question(self):
         resp = self.get('/question')
@@ -101,6 +124,18 @@ class JeopardyClient:
         else:
             print('Failed to submit answer to server')
 
+    def show_stats(self):
+        resp = self.get('/')
+        if resp.ok:
+            resp_json = resp.json()
+            if not resp_json:
+                print('Invalid response from server')
+            for client_info in resp_json['clients'].values():
+                client = ClientInfo(**client_info)
+                print(f'{client.nick}\t${client.score}\t({client.correct_answers}/{client.total_answers})')
+        else:
+            print('Failed to fetch stats')
+
     def handle(self, event):
         if event.event_type == 'NEW_GAME':
             print('A new game is starting!')
@@ -110,17 +145,19 @@ class JeopardyClient:
                 self.current_question_id = question.question_id
                 self.show_question(question)
         elif event.event_type == 'NEW_ANSWER':
-            client_id = event.payload['client_id']
+            client_id = event.payload['client']['client_id']
             if client_id != self.client_id:
+                nick = event.payload['client']['nick']
                 answer = event.payload['answer']
                 correct = event.payload['is_correct']
                 adverb = 'correctly' if correct else 'incorrectly'
-                print(f'{client_id} {adverb} guessed: {answer}')
+                print(f'{nick} {adverb} guessed: {answer}')
         elif event.event_type in {'NEW_PLAYER', 'PLAYER_LEFT'}:
             client_id = event.payload['client_id']
             if client_id != self.client_id:
+                nick = event.payload['nick']
                 verb = 'joined' if event.event_type == 'NEW_PLAYER' else 'left'
-                print(f'{client_id} has {verb} the game')
+                print(f'{nick} has {verb} the game')
         elif event.event_type == 'QUESTION_TIMEOUT':
             print(f'The correct answer is: {event.payload["answer"]}')
         else:
@@ -178,3 +215,8 @@ class ClientApp(Flask):
     @staticmethod
     def root():
         return no_content()
+
+
+if __name__ == '__main__':
+    with JeopardyClient() as client:
+        client.play()
