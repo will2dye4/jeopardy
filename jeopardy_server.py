@@ -55,7 +55,8 @@ class Game:
     def update_current_question(self, question):
         with self.lock:
             self.current_question = question
-        pool.submit(self.question_timeout, question.question_id)
+        if question is not None:
+            pool.submit(self.question_timeout, question.question_id)
 
     def is_current_question(self, question_id):
         return self.current_question is not None and self.current_question.question_id == question_id
@@ -114,10 +115,10 @@ def get_question():
         return game.current_question
     resp = requests.get('http://www.trivialbuzz.com/api/v1/questions/random.json')
     if not resp.ok:
-        return error('Failed to fetch question from TriviaBuzz API')
+        return error('Failed to fetch question from TrivialBuzz API')
     resp_json = resp.json()
-    if not resp.json:
-        return error('Received invalid response from TriviaBuzz API')
+    if not resp_json:
+        return error('Received invalid response from TrivialBuzz API')
     question_data = resp_json['question']
     question = Question(
         question_id=str(uuid.uuid4()),
@@ -141,9 +142,8 @@ def submit_answer():
         return error(f'Failed to parse answer: {e}', status=400)
     correct = check_guess(answer.text, game.current_question.answer)
     if correct:
-        with game.lock:
-            # TODO update scores
-            game.current_question = None
+        # TODO update scores
+        game.update_current_question(None)
     return AnswerResponse(correct)
 
 
