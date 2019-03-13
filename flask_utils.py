@@ -9,6 +9,8 @@ def to_json(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
         result = view(*args, **kwargs)
+        if isinstance(result, tuple):
+            return result
         if isinstance(result, Model):
             result = result.to_json()
         return jsonify(result)

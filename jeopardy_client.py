@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 
-import os
 import random
 import subprocess
-import sys
+import time
 import uuid
 
 from multiprocessing import Process
@@ -13,7 +12,10 @@ import requests
 from flask import Flask, request
 
 from flask_utils import no_content, to_json
-from jeopardy_model import ClientIDResponse, RegisterRequest
+from jeopardy_model import Answer, AnswerResponse, ClientIDResponse, Event, Question, RegisterRequest
+
+
+SUPPRESS_FLASK_LOGGING = True
 
 
 class JeopardyClient:
@@ -23,7 +25,6 @@ class JeopardyClient:
         self.server_address = server_address
         self.server_session = requests.Session()
         self.server_session.headers.update({'X-Jeopardy-Client-ID': self.client_id})
-        self.devnull = open(os.devnull, 'w')
         self.port = random.randrange(65000, 65536)
         self.app_process = self.start_app_process()
         self.register()
@@ -57,13 +58,46 @@ class JeopardyClient:
     def goodbye(self):
         self.post('/goodbye')
 
+    def get_question(self):
+        resp = self.get('/question')
+        if resp.ok:
+            question = Question.from_response(resp)
+            print(f'Category: {question.category}')
+            print(f'Value: ${question.value}')
+            print(f'Question: {question.text}')
+        else:
+            print('Failed to get question from server')
+
+    def answer_question(self, answer):
+        answer_req = Answer(answer)
+        resp = self.post('/answer', json=answer_req.to_json())
+        if resp.ok:
+            try:
+                answer_resp = AnswerResponse.from_response(resp)
+            except (TypeError, ValueError) as e:
+                print(f'Failed to parse answer response: {e}')
+            else:
+                if answer_resp.is_correct:
+                    print('Correct!')
+                else:
+                    print('Wrong.')
+        else:
+            print('Failed to submit answer to server')
+
+    def handle(self, event):
+        print(f'Server says: {event.event_type}')
+
     def start_app_process(self):
         app = ClientApp(self)
 
         def app_target():
-            # redirect output from the flask server
-            sys.stderr = self.devnull
-            sys.stdout = self.devnull
+            if SUPPRESS_FLASK_LOGGING:
+                import click
+                import logging
+                log = logging.getLogger('werkzeug')
+                log.disabled = True
+                setattr(click, 'echo', lambda *a, **k: None)
+                setattr(click, 'secho', lambda *a, **k: None)
             app.run(host='0.0.0.0', port=self.port)
 
         app_process = Process(target=app_target)
@@ -79,7 +113,6 @@ class JeopardyClient:
             self.app_process.join()
             self.app_process.close()
             print('Client app stopped')
-            self.devnull.close()
 
 
 class ClientApp(Flask):
@@ -89,10 +122,19 @@ class ClientApp(Flask):
         self.client = client
         self.route('/')(self.root)
         self.route('/id')(self.id)
+        self.route('/notify', methods=['POST'])(self.notify)
 
     @to_json
     def id(self):
         return ClientIDResponse(self.client.client_id)
+
+    def notify(self):
+        try:
+            event = Event.from_request(request)
+        except (TypeError, ValueError):
+            return error('Failed to parse event')
+        self.client.handle(event)
+        return no_content()
 
     @staticmethod
     def root():

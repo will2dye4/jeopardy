@@ -32,3 +32,32 @@ class ClientIDResponse(Model):
 class RegisterRequest(Model):
     address: str
     client_id: str
+
+
+@dataclass
+class Question(Model):
+    question_id: str
+    text: str
+    answer: str
+    category: str
+    value: int
+
+    def to_json(self):
+        json = super().to_json()
+        json['answer'] = ''
+        return json
+
+
+@dataclass
+class Answer(Model):
+    text: str
+
+
+@dataclass
+class AnswerResponse(Model):
+    is_correct: bool
+
+
+@dataclass
+class Event(Model):
+    event_type: str
