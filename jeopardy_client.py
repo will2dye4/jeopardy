@@ -21,7 +21,7 @@ SUPPRESS_FLASK_LOGGING = True
 
 class JeopardyClient:
 
-    def __init__(self, event_handler, server_address=None, nick=None, start_app_process=True):
+    def __init__(self, server_address=None, nick=None, event_handler=None):
         if server_address is None:
             server_address = os.getenv('JEOPARDY_SERVER_ADDRESS')
             if server_address is None:
@@ -35,7 +35,7 @@ class JeopardyClient:
         self.server_session.headers.update({'X-Jeopardy-Client-ID': self.client_id})
         self.port = random.randrange(65000, 65536)
         self.app_process = None
-        if start_app_process:
+        if event_handler is not None:
             self.start_app_process(event_handler)
             self.register()
 

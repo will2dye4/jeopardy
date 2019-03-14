@@ -5,7 +5,7 @@ from jeopardy_model import ClientInfo, Question
 class JeopardyCLI:
 
     def __init__(self, server_address=None, nick=None):
-        self.client = JeopardyClient(self, server_address, nick, False)
+        self.client = JeopardyClient(server_address, nick)
         self.current_question_id = None
 
     def __enter__(self):
