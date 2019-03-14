@@ -144,7 +144,7 @@ def get_random_question():
         question_id=str(uuid.uuid4()),
         text=question_data['body'][1:-1],
         answer=question_data['response'],
-        category=question_data['category']['name'],
+        category=question_data['category']['name'].title(),
         value=question_data['value']
     )
 

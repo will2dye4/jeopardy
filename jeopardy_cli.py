@@ -1,8 +1,11 @@
+from colorize import bold, green
 from jeopardy_client import JeopardyClient
 from jeopardy_model import ClientInfo, Question
 
 
 class JeopardyCLI:
+
+    HOST = 'Host'
 
     def __init__(self, server_address=None, nick=None):
         self.client = JeopardyClient(server_address, nick)
@@ -15,10 +18,16 @@ class JeopardyCLI:
         self.close()
 
     @staticmethod
-    def show_question(question):
-        print(f'Category: {question.category}')
-        print(f'Value: ${question.value}')
-        print(f'Question: {question.text}')
+    def player_says(player, message):
+        print(f'{bold(player + ":")} {message}')
+
+    @classmethod
+    def host_says(cls, message):
+        cls.player_says(cls.HOST, message)
+
+    @classmethod
+    def show_question(cls, question):
+        cls.host_says(f'In {bold(question.category)} for {green("$" + str(question.value))}:\n      {question.text}')
 
     def show_stats(self):
         resp = self.client.get('/')
@@ -51,15 +60,16 @@ class JeopardyCLI:
                 else:
                     is_correct = self.client.answer(user_input)
                     if is_correct:
-                        print('Correct!')
+                        self.host_says('Correct!')
                     else:
-                        print('Wrong.')
+                        self.host_says('Wrong.')
         except EOFError:
             print()
+            self.host_says('Goodbye!')
 
     def handle(self, event):
         if event.event_type == 'NEW_GAME':
-            print('A new game is starting!')
+            self.host_says('A new game is starting!')
         elif event.event_type == 'NEW_QUESTION':
             question = Question(**event.payload)
             if question.question_id != self.current_question_id:
@@ -71,18 +81,19 @@ class JeopardyCLI:
                 nick = event.payload['client']['nick']
                 answer = event.payload['answer']
                 correct = event.payload['is_correct']
-                adverb = 'correctly' if correct else 'incorrectly'
-                print(f'{nick} {adverb} guessed: {answer}')
+                self.player_says(nick, f'What is {answer}?')
+                host_response = f'{nick}, that is correct.' if correct else f'No, sorry, {nick}.'
+                self.host_says(host_response)
         elif event.event_type in {'NEW_PLAYER', 'PLAYER_LEFT'}:
             client_id = event.payload['client_id']
             if client_id != self.client.client_id:
                 nick = event.payload['nick']
                 verb = 'joined' if event.event_type == 'NEW_PLAYER' else 'left'
-                print(f'{nick} has {verb} the game')
+                self.host_says(f'{nick} has {verb} the game.')
         elif event.event_type == 'QUESTION_TIMEOUT':
-            print(f'The correct answer is: {event.payload["answer"]}')
+            self.host_says(f'The correct answer is: {event.payload["answer"]}')
         else:
-            print(f'Server says: {event.event_type}')
+            print(f'[!!] Received unexpected event: {event}')
 
     def close(self):
         self.client.close()
