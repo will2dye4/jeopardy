@@ -6,6 +6,7 @@ import uuid
 
 from collections import namedtuple
 from tkinter import font
+from tkinter import ttk
 from multiprocessing import Process, Queue
 
 from jeopardy_cli import ClientApp
@@ -19,10 +20,13 @@ SUPPRESS_FLASK_LOGGING = True
 TaggedText = namedtuple('TaggedText', ['text', 'tags'])
 
 
-class JeopardyApp(tk.Frame):
+class JeopardyApp(ttk.Frame):
 
     DEFAULT_TICK_DELAY_MILLIS = 100
     HOST = 'Host'
+
+    DARK_GRAY = '#333333'
+    LIGHT_GRAY = '#CCCCCC'
     JEOPARDY_BLUE = '#060CE9'
     JEOPARDY_LIGHT_BLUE = '#115FF4'
     JEOPARDY_VIOLET = '#8D2AB5'
@@ -48,50 +52,65 @@ class JeopardyApp(tk.Frame):
 
         self.stats_pane = None
         self.event_pane = None
-        self.pack()
+        self.pack(fill='both', expand=True)
+        self.configure_style()
         self.default_font = font.Font(self, 'Courier')
+        self.bold_font = font.Font(self, 'Courier')
+        self.bold_font.configure(weight='bold')
         self.main_pane = self.create_main_pane()
         self.input_text = tk.StringVar(value='')
         self.input_pane = self.create_input_pane()
 
+    def configure_style(self):
+        style = ttk.Style()
+        style.configure('Main.TFrame', background=self.DARK_GRAY)
+
     def create_main_pane(self):
-        main_pane = tk.Frame(self, height=50, width=120)
-        main_pane.pack(side='top')
+        main_pane = ttk.Frame(self, height=50, width=120, style='Main.TFrame')
+        main_pane.pack(side='top', fill='both', expand=True)
         self.stats_pane = self.create_stats_pane(main_pane)
         self.update_stats()
         self.event_pane = self.create_event_pane(main_pane)
         return main_pane
 
     def create_stats_pane(self, parent):
-        pane = tk.Text(parent, height=50, width=20, font=self.default_font, relief=tk.GROOVE, borderwidth=3, state=tk.DISABLED, takefocus=0, undo=False)
-        pane.pack(side='left')
+        pane = tk.Text(parent, height=50, width=20, font=self.default_font, background=self.LIGHT_GRAY, state=tk.DISABLED, takefocus=0, undo=False)
+        pane.tag_configure('heading', font=self.bold_font, background=self.JEOPARDY_BLUE, foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
+        pane.tag_configure('bold', font=self.bold_font, justify=tk.CENTER)
+        pane.tag_configure('centered', justify=tk.CENTER)
+        pane.pack(side='left', fill='both')
         return pane
 
     def create_event_pane(self, parent):
-        pane = tk.Text(parent, height=50, width=80, font=self.default_font, wrap=tk.WORD, state=tk.DISABLED, takefocus=0, undo=False)
-        bold_font = font.Font(pane, 'Courier')
-        bold_font.configure(weight='bold')
-        pane.tag_configure('bold', font=bold_font)
+        pane = tk.Text(parent, height=50, width=80, font=self.default_font, background=self.DARK_GRAY, foreground='white', wrap=tk.WORD, state=tk.DISABLED, takefocus=0, undo=False)
+        pane.tag_configure('bold', font=self.bold_font)
         small_font = font.Font(pane, 'Courier')
         small_font.configure(size=4)
         pane.tag_configure('small', font=small_font)
-        pane.tag_configure('question_category', background=self.JEOPARDY_BLUE, foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
+        pane.tag_configure('question_category', background=self.JEOPARDY_BLUE, font=self.bold_font, foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
         pane.tag_configure('question_value', background=self.JEOPARDY_LIGHT_BLUE, foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
-        pane.tag_configure('question_text', justify=tk.CENTER, spacing1=3, spacing3=3)
+        pane.tag_configure('question_text', background='white', foreground='black', justify=tk.CENTER, spacing1=3, spacing3=3)
         tiny_font = font.Font(pane, 'Courier')
         tiny_font.configure(size=2)
         pane.tag_configure('line', background='black', font=tiny_font)
-        scrollbar = tk.Scrollbar(parent, orient=tk.VERTICAL, borderwidth=1, command=pane.yview)
+        scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, borderwidth=1, command=pane.yview)
         scrollbar.pack(side='right', fill='y', expand=False)
         pane.configure(yscrollcommand=scrollbar.set)
-        pane.pack(side='right')
+        pane.pack(side='right', fill='both', expand=True)
         return pane
 
     def create_input_pane(self):
-        pane = tk.Entry(self, width=80, textvariable=self.input_text)
+        pane = ttk.Entry(self, width=80, textvariable=self.input_text)
         pane.bind('<KeyPress-Return>', self.handle_user_input)
         pane.pack(side='bottom')
         return pane
+
+    @property
+    def longest_player_nick(self):
+        if not self.players:
+            return 0
+        longest_nick_player = max(self.players.values(), key=lambda p: len(p.nick))
+        return len(longest_nick_player.nick)
 
     def fetch_stats(self):
         resp = self.client.get('/')
@@ -108,18 +127,18 @@ class JeopardyApp(tk.Frame):
             print('Failed to fetch stats')
 
     def update_stats(self):
-        def format_nick(player):
-            prefix = '*' if player.player_id == self.player_id else ' '
-            return f'{prefix} {player.nick}'
-
         sorted_players = sorted(self.players.values(), key=lambda p: p.score, reverse=True)
-        player_stats = [
-            f'{format_nick(player)}\t{self.format_score(player.score)}'
-            for player in sorted_players
-        ]
+        align = self.longest_player_nick + 2
         self.stats_pane.configure(state=tk.NORMAL)
         self.stats_pane.delete('1.0', tk.END)
-        self.stats_pane.insert('1.0', '\n'.join(player_stats))
+        self.stats_pane.insert('1.0', 'Players\n', ('heading',))
+        self.stats_pane.insert(tk.END, '\n')
+        for player in sorted_players:
+            player_stats = f'{player.nick:{align}}{self.format_score(player.score)}\n'
+            if player.player_id == self.player_id:
+                self.stats_pane.insert(tk.END, player_stats, ('bold',))
+            else:
+                self.stats_pane.insert(tk.END, player_stats, ('centered',))
         self.stats_pane.configure(state=tk.DISABLED)
 
     def register(self):
@@ -177,7 +196,7 @@ class JeopardyApp(tk.Frame):
     def handle_user_input(self, event):
         user_input = self.input_text.get()
         if not user_input:
-            return
+            user_input = '/q'
         if user_input == '/h':
             self.append_to_event_pane('Type "/q" to get a new question. Enter your answer to check if it is correct.')
         elif user_input == '/q':
