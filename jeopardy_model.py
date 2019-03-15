@@ -9,19 +9,33 @@ class Model:
         request_json = request.get_json()
         if not request_json:
             raise ValueError('No request JSON')
-        return cls(**request_json)
+        return cls.from_json(request_json)
 
     @classmethod
     def from_response(cls, response):
         response_json = response.json()
         if not response_json:
             raise ValueError('No response JSON')
-        return cls(**response_json)
+        return cls.from_json(response_json)
+
+    @classmethod
+    def from_json(cls, json):
+        fields = {}
+        for key, value in json.items():
+            field_type = cls.__dataclass_fields__[key].type
+            if isinstance(field_type, type) and issubclass(field_type, Model):
+                value = field_type.from_json(value)
+            fields[key] = value
+        return cls(**fields)
 
     def to_json(self):
-        return {
-            key: getattr(self, key) for key in self.__dataclass_fields__.keys()
-        }
+        json = {}
+        for key in self.__dataclass_fields__.keys():
+            value = getattr(self, key)
+            if isinstance(value, Model):
+                value = value.to_json()
+            json[key] = value
+        return json
 
 
 @dataclass
@@ -68,4 +82,5 @@ class AnswerResponse(Model):
 @dataclass
 class Event(Model):
     event_type: str
+    player: PlayerInfo
     payload: Dict[str, Any]

@@ -41,24 +41,22 @@ class Game:
                 nick=register_req.nick
             )
             self.players[register_req.player_id] = player
-            event = Event(
-                event_type='NEW_PLAYER',
-                payload=player.to_json()
-            )
+            event = self.make_event('NEW_PLAYER')
             self.notify(event)
 
     def remove_player(self, player_id):
         if player_id in self.players:
-            player = self.players[player_id]
+            event = self.make_event('PLAYER_LEFT')
             del self.players[player_id]
-            event = Event(
-                event_type='PLAYER_LEFT',
-                payload=player.to_json()
-            )
             self.notify(event)
 
     def get_player(self, player_id):
         return self.players.get(player_id)
+
+    def make_event(self, event_type, payload=None):
+        if payload is None:
+            payload = {}
+        return Event(event_type=event_type, payload=payload, player=self.get_player(get_player_id()))
 
     def notify(self, event, exclude=None):
         self.pool.submit(self.notify_players, event, exclude=exclude)
@@ -76,7 +74,7 @@ class Game:
     def start(self):
         with self.lock:
             if not self.in_progress:
-                self.notify(Event(event_type='NEW_GAME', payload={}))
+                self.notify(self.make_event('NEW_GAME'))
                 question = get_random_question()
                 if question is None:
                     raise RuntimeError('Failed to fetch starting question')
@@ -88,7 +86,7 @@ class Game:
             if self.current_question is None or question is None:
                 self.current_question = question
                 if question is not None:
-                    event = Event(
+                    event = self.make_event(
                         event_type='NEW_QUESTION',
                         payload=question.to_json()
                     )
@@ -104,11 +102,10 @@ class Game:
             player.correct_answers += 1
             player.score += self.current_question.value
             self.update_current_question(None)
-        event = Event(
+        event = self.make_event(
             event_type='NEW_ANSWER',
             payload={
                 'answer': guess,
-                'player': player.to_json(),
                 'is_correct': correct
             }
         )
@@ -125,7 +122,7 @@ class Game:
         with self.lock:
             if self.is_current_question(question.question_id):
                 self.current_question = None
-                event = Event(
+                event = self.make_event(
                     event_type='QUESTION_TIMEOUT',
                     payload={'answer': question.answer}
                 )

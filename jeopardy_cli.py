@@ -56,7 +56,7 @@ class JeopardyCLI:
             if not resp_json:
                 print('Invalid response from server')
             for player_info in resp_json['players'].values():
-                player = PlayerInfo(**player_info)
+                player = PlayerInfo.from_json(player_info)
                 print(f'{player.nick}\t${player.score}\t({player.correct_answers}/{player.total_answers})')
         else:
             print('Failed to fetch stats')
@@ -92,28 +92,26 @@ class JeopardyCLI:
             self.host_says('Goodbye!')
 
     def handle(self, event):
+        if event.player.player_id == self.player_id:
+            return  # don't respond to our own events
         if event.event_type == 'NEW_GAME':
             self.host_says('A new game is starting!')
         elif event.event_type == 'NEW_QUESTION':
-            question = Question(**event.payload)
+            question = Question.from_json(event.payload)
             if question.question_id != self.current_question_id:
                 self.current_question_id = question.question_id
                 self.show_question(question)
         elif event.event_type == 'NEW_ANSWER':
-            player_id = event.payload['player']['player_id']
-            if player_id != self.player_id:
-                nick = event.payload['player']['nick']
-                answer = event.payload['answer']
-                correct = event.payload['is_correct']
-                self.player_says(nick, f'What is {answer}?')
-                host_response = f'{nick}, that is correct.' if correct else f'No, sorry, {nick}.'
-                self.host_says(host_response)
+            nick = event.player.nick
+            answer = event.payload['answer']
+            correct = event.payload['is_correct']
+            self.player_says(nick, f'What is {answer}?')
+            host_response = f'{nick}, that is correct.' if correct else f'No, sorry, {nick}.'
+            self.host_says(host_response)
         elif event.event_type in {'NEW_PLAYER', 'PLAYER_LEFT'}:
-            player_id = event.payload['player_id']
-            if player_id != self.player_id:
-                nick = event.payload['nick']
-                verb = 'joined' if event.event_type == 'NEW_PLAYER' else 'left'
-                self.host_says(f'{nick} has {verb} the game.')
+            nick = event.player.nick
+            verb = 'joined' if event.event_type == 'NEW_PLAYER' else 'left'
+            self.host_says(f'{nick} has {verb} the game.')
         elif event.event_type == 'QUESTION_TIMEOUT':
             self.host_says(f'The correct answer is: {event.payload["answer"]}')
         else:
@@ -164,8 +162,8 @@ class ClientApp(Flask):
     def notify(self):
         try:
             event = Event.from_request(request)
-        except (TypeError, ValueError):
-            return error('Failed to parse event')
+        except (TypeError, ValueError) as e:
+            return error(f'Failed to parse event: {e}')
         try:
             self.event_handler.handle(event)
         except Exception as e:
