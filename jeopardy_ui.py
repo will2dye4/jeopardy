@@ -31,7 +31,7 @@ class JeopardyApp(ttk.Frame):
     JEOPARDY_LIGHT_BLUE = '#115FF4'
     JEOPARDY_VIOLET = '#8D2AB5'
 
-    def __init__(self, master=None, server_address=None, nick=None):
+    def __init__(self, master=None, server_address=None, nick=None, dark_mode=False):
         if master is None:
             master = tk.Tk()
             master.title('Jeopardy!')
@@ -41,8 +41,8 @@ class JeopardyApp(ttk.Frame):
         if nick is None:
             nick = os.getenv('JEOPARDY_CLIENT_NICKNAME')
         self.player_id = str(uuid.uuid4())
-        self.players = {}
         self.nick = nick or self.player_id
+        self.players = {}
         self.client = JeopardyClient(server_address, self.player_id)
         self.current_question_id = None
         self.port = random.randrange(65000, 65536)
@@ -53,6 +53,7 @@ class JeopardyApp(ttk.Frame):
         self.stats_pane = None
         self.event_pane = None
         self.pack(fill='both', expand=True)
+        self.dark_mode = dark_mode
         self.configure_style()
         self.default_font = font.Font(self, 'Courier')
         self.bold_font = font.Font(self, 'Courier')
@@ -63,7 +64,10 @@ class JeopardyApp(ttk.Frame):
 
     def configure_style(self):
         style = ttk.Style()
-        style.configure('Main.TFrame', background=self.DARK_GRAY)
+        if self.dark_mode:
+            style.configure('Main.TFrame', background=self.DARK_GRAY)
+        else:
+            style.configure('Main.TFrame')
 
     def create_main_pane(self):
         main_pane = ttk.Frame(self, height=50, width=120, style='Main.TFrame')
@@ -75,14 +79,20 @@ class JeopardyApp(ttk.Frame):
 
     def create_stats_pane(self, parent):
         pane = tk.Text(parent, height=50, width=20, font=self.default_font, background=self.LIGHT_GRAY, state=tk.DISABLED, takefocus=0, undo=False)
-        pane.tag_configure('heading', font=self.bold_font, background=self.JEOPARDY_BLUE, foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
+        pane.tag_configure('heading', font=self.bold_font, background=self.JEOPARDY_BLUE, foreground='white', justify=tk.CENTER, spacing1=6, spacing3=6)
         pane.tag_configure('bold', font=self.bold_font, justify=tk.CENTER)
         pane.tag_configure('centered', justify=tk.CENTER)
         pane.pack(side='left', fill='both')
         return pane
 
     def create_event_pane(self, parent):
-        pane = tk.Text(parent, height=50, width=80, font=self.default_font, background=self.DARK_GRAY, foreground='white', wrap=tk.WORD, state=tk.DISABLED, takefocus=0, undo=False)
+        if self.dark_mode:
+            background = self.DARK_GRAY
+            foreground = 'white'
+        else:
+            background = 'white'
+            foreground = 'black'
+        pane = tk.Text(parent, height=50, width=80, font=self.default_font, background=background, foreground=foreground, wrap=tk.WORD, state=tk.DISABLED, takefocus=0, undo=False)
         pane.tag_configure('bold', font=self.bold_font)
         small_font = font.Font(pane, 'Courier')
         small_font.configure(size=4)
@@ -275,6 +285,7 @@ class JeopardyApp(ttk.Frame):
         self.client.start_game()
         self.fetch_stats()
         self.tick()
+        self.input_pane.focus_set()
         super().mainloop()
 
     def start_app_process(self):
