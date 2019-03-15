@@ -92,7 +92,7 @@ class JeopardyCLI:
             self.host_says('Goodbye!')
 
     def handle(self, event):
-        if event.player.player_id == self.player_id:
+        if event.player is not None and event.player.player_id == self.player_id:
             return  # don't respond to our own events
         if event.event_type == 'NEW_GAME':
             self.host_says('A new game is starting!')

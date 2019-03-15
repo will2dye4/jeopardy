@@ -20,6 +20,8 @@ class Model:
 
     @classmethod
     def from_json(cls, json):
+        if json is None:
+            return json
         fields = {}
         for key, value in json.items():
             field_type = cls.__dataclass_fields__[key].type

@@ -56,20 +56,23 @@ class Game:
     def make_event(self, event_type, payload=None):
         if payload is None:
             payload = {}
-        return Event(event_type=event_type, payload=payload, player=self.get_player(get_player_id()))
+        try:
+            player_id = get_player_id()
+        except RuntimeError:
+            player = None
+        else:
+            player = self.get_player(player_id)
+        return Event(event_type=event_type, payload=payload, player=player)
 
-    def notify(self, event, exclude=None):
-        self.pool.submit(self.notify_players, event, exclude=exclude)
+    def notify(self, event):
+        self.pool.submit(self.notify_players, event)
 
-    def notify_players(self, event, exclude=None):
-        if exclude is None:
-            exclude = set()
+    def notify_players(self, event):
         event_json = event.to_json()
         for player_id, player_info in self.players.items():
-            if player_id not in exclude:
-                resp = requests.post(f'http://{player_info.client_address}/notify', json=event_json)
-                if not resp.ok:
-                    print(f'Failed to notify player: {resp.text}')
+            resp = requests.post(f'http://{player_info.client_address}/notify', json=event_json)
+            if not resp.ok:
+                print(f'Failed to notify player: {resp.text}')
 
     def start(self):
         with self.lock:
@@ -81,7 +84,7 @@ class Game:
                 self.in_progress = True
                 self.update_current_question(question)
 
-    def update_current_question(self, question, player_id=None):
+    def update_current_question(self, question):
         with self.lock:
             if self.current_question is None or question is None:
                 self.current_question = question
@@ -90,8 +93,7 @@ class Game:
                         event_type='NEW_QUESTION',
                         payload=question.to_json()
                     )
-                    exclude = {player_id} if player_id is not None else None
-                    self.notify(event, exclude=exclude)
+                    self.notify(event)
                     self.pool.submit(self.question_timeout, question)
 
     def check_guess(self, guess):

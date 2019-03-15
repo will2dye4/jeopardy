@@ -62,7 +62,7 @@ def get_question():
     question = get_random_question()
     if question is None:
         return error('Failed to fetch question from TrivialBuzz API')
-    game.update_current_question(question, get_player_id())
+    game.update_current_question(question)
     return game.current_question
 
 
