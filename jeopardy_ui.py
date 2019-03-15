@@ -23,6 +23,9 @@ class JeopardyApp(tk.Frame):
 
     DEFAULT_TICK_DELAY_MILLIS = 100
     HOST = 'Host'
+    JEOPARDY_BLUE = '#060CE9'
+    JEOPARDY_LIGHT_BLUE = '#115FF4'
+    JEOPARDY_VIOLET = '#8D2AB5'
 
     def __init__(self, master=None, server_address=None, nick=None):
         if master is None:
@@ -72,7 +75,12 @@ class JeopardyApp(tk.Frame):
         small_font = font.Font(pane, 'Courier')
         small_font.configure(size=4)
         pane.tag_configure('small', font=small_font)
-        pane.tag_configure('green', foreground='green')
+        pane.tag_configure('question_category', background=self.JEOPARDY_BLUE, foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
+        pane.tag_configure('question_value', background=self.JEOPARDY_LIGHT_BLUE, foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
+        pane.tag_configure('question_text', justify=tk.CENTER, spacing1=3, spacing3=3)
+        tiny_font = font.Font(pane, 'Courier')
+        tiny_font.configure(size=2)
+        pane.tag_configure('line', background='black', font=tiny_font)
         scrollbar = tk.Scrollbar(parent, orient=tk.VERTICAL, borderwidth=1, command=pane.yview)
         scrollbar.pack(side='right', fill='y', expand=False)
         pane.configure(yscrollcommand=scrollbar.set)
@@ -148,32 +156,6 @@ class JeopardyApp(tk.Frame):
             TaggedText(f'{player}: ', 'bold'),
             *message_parts
         ])
-        # indentation = ' ' * (len(player) + 2)
-        # new_parts = [TaggedText(f'{player}: ', 'bold')]
-        # for part in message_parts:
-        #     if isinstance(part, TaggedText) or '\n' not in part:
-        #         # assumption: tagged text doesn't have newlines
-        #         new_parts.append(part)
-        #     else:
-        #         parts = []
-        #         lines = part.split('\n')
-        #         for i, line in enumerate(lines):
-        #             if i > 0:
-        #                 line = indentation + line
-        #             while len(line) > 80:
-        #                 index = 80 - 1
-        #                 while line[index] != ' ':
-        #                     index -= 1
-        #                 first, rest = line[:index], line[index+1:]
-        #                 parts.append(first + '\n')
-        #                 line = indentation + rest
-        #             if line.strip():
-        #                 if i == 0 and len(lines) > 1:
-        #                     line = line + '\n'
-        #                 parts.append(line)
-        #         new_parts.extend(parts)
-        #
-        # self.show_event(new_parts)
 
     def host_says(self, message):
         self.player_says(self.HOST, message)
@@ -183,12 +165,13 @@ class JeopardyApp(tk.Frame):
         return f'${score:,}'
 
     def show_question(self, question):
-        self.host_says([
-            'In ',
-            TaggedText(question.category, 'bold'),
-            ' for ',
-            TaggedText(self.format_score(question.value), 'green'),
-            f': {question.text}',
+        self.show_event([
+            '\n',
+            TaggedText('\n', 'line'),
+            TaggedText(question.category + '\n', 'question_category'),
+            TaggedText(self.format_score(question.value) + '\n', 'question_value'),
+            TaggedText(question.text + '\n', 'question_text'),
+            TaggedText('\n', 'line'),
         ])
 
     def handle_user_input(self, event):

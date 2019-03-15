@@ -153,13 +153,14 @@ def get_random_question():
     question_data = resp_json['question']
     return Question(
         question_id=str(uuid.uuid4()),
-        text=question_data['body'][1:-1],
+        text=question_data['body'][1:-1].replace('<br />', '\n'),  # TODO more sanitization
         answer=question_data['response'],
         category=question_data['category']['name'].title(),
         value=question_data['value']
     )
 
 
+# TODO return another variable indicating if the guess is close
 def check_guess(guess, correct_answer):
     potential_answers = re.findall(r'\([^()]*\)|[^()]+', correct_answer)
     if len(potential_answers) == 2:
