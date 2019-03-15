@@ -4,7 +4,7 @@ from flask import Flask, jsonify, request
 
 from flask_utils import error, get_player_id, no_content, to_json
 from jeopardy_game import Game, get_random_question
-from jeopardy_model import Answer, AnswerResponse, RegisterRequest
+from jeopardy_model import AnswerResponse, RegisterRequest
 
 
 app = Flask(__name__)
@@ -71,10 +71,12 @@ def get_question():
 def submit_answer():
     if game.current_question is None:
         return error('There is no current question', status=400)
-    try:
-        answer = Answer.from_request(request)
-    except (TypeError, ValueError) as e:
-        return error(f'Failed to parse answer: {e}', status=400)
 
-    correct, value = game.check_guess(answer.text)
+    correct, value = game.check_guess(request.get_data(as_text=True))
     return AnswerResponse(correct, value)
+
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    game.post_chat_message(request.get_data(as_text=True))
+    return no_content()

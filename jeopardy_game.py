@@ -119,6 +119,13 @@ class Game:
         self.notify(event)
         return correct, question.value
 
+    def post_chat_message(self, message):
+        event = self.make_event(
+            event_type='CHAT_MESSAGE',
+            payload={'message': message}
+        )
+        self.notify(event)
+
     def is_current_question(self, question_id):
         return self.current_question is not None and self.current_question.question_id == question_id
 

@@ -82,6 +82,8 @@ class JeopardyCLI:
                         self.show_question(question)
                 elif user_input == '/s':
                     self.show_stats()
+                elif user_input.startswith('/c '):
+                    self.client.chat(user_input[3:])
                 else:
                     resp = self.client.answer(user_input)
                     self.host_says('Correct!' if resp.is_correct else 'Wrong.')
@@ -112,6 +114,9 @@ class JeopardyCLI:
             self.host_says(f'{nick} has {verb} the game.')
         elif event.event_type == 'QUESTION_TIMEOUT':
             self.host_says(f'The correct answer is: {event.payload["answer"]}')
+        elif event.event_type == 'CHAT_MESSAGE':
+            nick = event.player.nick
+            self.player_says(nick, event.payload['message'])
         else:
             print(f'[!!] Received unexpected event: {event}')
 

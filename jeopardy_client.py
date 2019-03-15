@@ -3,7 +3,7 @@ import uuid
 
 import requests
 
-from jeopardy_model import Answer, AnswerResponse, Question, RegisterRequest
+from jeopardy_model import AnswerResponse, Question, RegisterRequest
 
 
 class JeopardyClient:
@@ -62,8 +62,7 @@ class JeopardyClient:
             return None
 
     def answer(self, guess):
-        answer_req = Answer(guess)
-        resp = self.post('/answer', json=answer_req.to_json())
+        resp = self.post('/answer', data=guess)
         if resp.ok:
             try:
                 answer_resp = AnswerResponse.from_response(resp)
@@ -74,6 +73,11 @@ class JeopardyClient:
         else:
             print('Failed to submit answer to server')
             return None
+
+    def chat(self, message):
+        resp = self.post('/chat', data=message)
+        if not resp.ok:
+            print(f'Failed to post chat message: {resp.text}')
 
     def close(self):
         self.goodbye()  # tell the server we are going away

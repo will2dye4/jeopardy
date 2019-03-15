@@ -11,7 +11,7 @@ from jeopardy_client import JeopardyClient
 from jeopardy_model import PlayerInfo, Question
 
 
-SUPPRESS_FLASK_LOGGING = False
+SUPPRESS_FLASK_LOGGING = True
 
 
 class JeopardyApp(tk.Frame):
@@ -137,6 +137,10 @@ class JeopardyApp(tk.Frame):
             if question.question_id != self.current_question_id:
                 self.current_question_id = question.question_id
                 self.show_question(question)
+        elif user_input.startswith('/c '):
+            message = user_input[3:]
+            self.client.chat(message)
+            self.player_says(self.nick, message)
         else:
             player = self.players[self.player_id]
             player.total_answers += 1
@@ -176,6 +180,9 @@ class JeopardyApp(tk.Frame):
             self.show_stats_update(event)
         elif event.event_type == 'QUESTION_TIMEOUT':
             self.host_says(f'The correct answer is: {event.payload["answer"]}')
+        elif event.event_type == 'CHAT_MESSAGE':
+            nick = event.player.nick
+            self.player_says(nick, event.payload['message'])
         else:
             print(f'[!!] Received unexpected event: {event}')
 

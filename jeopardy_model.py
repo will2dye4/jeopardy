@@ -72,11 +72,6 @@ class Question(Model):
 
 
 @dataclass
-class Answer(Model):
-    text: str
-
-
-@dataclass
 class AnswerResponse(Model):
     is_correct: bool
     value: int
