@@ -4,6 +4,8 @@ import subprocess
 import tkinter as tk
 import uuid
 
+from collections import namedtuple
+from tkinter import font
 from multiprocessing import Process, Queue
 
 from jeopardy_cli import ClientApp
@@ -12,6 +14,9 @@ from jeopardy_model import PlayerInfo, Question
 
 
 SUPPRESS_FLASK_LOGGING = True
+
+
+TaggedText = namedtuple('TaggedText', ['text', 'tags'])
 
 
 class JeopardyApp(tk.Frame):
@@ -41,6 +46,7 @@ class JeopardyApp(tk.Frame):
         self.stats_pane = None
         self.event_pane = None
         self.pack()
+        self.default_font = font.Font(self, 'Courier')
         self.main_pane = self.create_main_pane()
         self.input_text = tk.StringVar(value='')
         self.input_pane = self.create_input_pane()
@@ -53,15 +59,23 @@ class JeopardyApp(tk.Frame):
         self.event_pane = self.create_event_pane(main_pane)
         return main_pane
 
-    @staticmethod
-    def create_stats_pane(parent):
-        pane = tk.Text(parent, height=50, width=20, relief=tk.GROOVE, borderwidth=3, state=tk.DISABLED, takefocus=0, undo=False)
+    def create_stats_pane(self, parent):
+        pane = tk.Text(parent, height=50, width=20, font=self.default_font, relief=tk.GROOVE, borderwidth=3, state=tk.DISABLED, takefocus=0, undo=False)
         pane.pack(side='left')
         return pane
 
-    @staticmethod
-    def create_event_pane(parent):
-        pane = tk.Text(parent, height=50, width=80, state=tk.DISABLED, takefocus=0, undo=False)
+    def create_event_pane(self, parent):
+        pane = tk.Text(parent, height=50, width=80, font=self.default_font, wrap=tk.WORD, state=tk.DISABLED, takefocus=0, undo=False)
+        bold_font = font.Font(pane, 'Courier')
+        bold_font.configure(weight='bold')
+        pane.tag_configure('bold', font=bold_font)
+        small_font = font.Font(pane, 'Courier')
+        small_font.configure(size=4)
+        pane.tag_configure('small', font=small_font)
+        pane.tag_configure('green', foreground='green')
+        scrollbar = tk.Scrollbar(parent, orient=tk.VERTICAL, borderwidth=1, command=pane.yview)
+        scrollbar.pack(side='right', fill='y', expand=False)
+        pane.configure(yscrollcommand=scrollbar.set)
         pane.pack(side='right')
         return pane
 
@@ -92,7 +106,7 @@ class JeopardyApp(tk.Frame):
 
         sorted_players = sorted(self.players.values(), key=lambda p: p.score, reverse=True)
         player_stats = [
-            f'{format_nick(player)}\t${player.score}'
+            f'{format_nick(player)}\t{self.format_score(player.score)}'
             for player in sorted_players
         ]
         self.stats_pane.configure(state=tk.NORMAL)
@@ -106,25 +120,76 @@ class JeopardyApp(tk.Frame):
             raise RuntimeError('Failed to find external IP')
         self.client.register(f'{external_ip}:{self.port}', self.nick)
 
-    def show_event(self, event):
-        self.event_queue.put_nowait(event)
+    def show_event(self, event_parts):
+        self.event_queue.put_nowait(event_parts)
 
     def show_stats_update(self, event):
         self.stats_queue.put_nowait(event)
 
-    def append_to_event_pane(self, event):
+    def append_to_event_pane(self, event_parts):
         self.event_pane.configure(state=tk.NORMAL)
-        self.event_pane.insert(tk.END, event + '\n')
+        for event_part in event_parts:
+            if isinstance(event_part, TaggedText):
+                text, tags = event_part
+                if isinstance(tags, str):
+                    tags = (tags,)
+                self.event_pane.insert(tk.END, text, tags)
+            else:
+                self.event_pane.insert(tk.END, event_part)
+        self.event_pane.insert(tk.END, '\n')
+        self.event_pane.insert(tk.END, '\n', ('small',))
         self.event_pane.configure(state=tk.DISABLED)
+        self.event_pane.see(tk.END)
 
-    def player_says(self, player, message):
-        self.show_event(f'{player}: {message}')
+    def player_says(self, player, message_parts):
+        if isinstance(message_parts, str):
+            message_parts = [message_parts]
+        self.show_event([
+            TaggedText(f'{player}: ', 'bold'),
+            *message_parts
+        ])
+        # indentation = ' ' * (len(player) + 2)
+        # new_parts = [TaggedText(f'{player}: ', 'bold')]
+        # for part in message_parts:
+        #     if isinstance(part, TaggedText) or '\n' not in part:
+        #         # assumption: tagged text doesn't have newlines
+        #         new_parts.append(part)
+        #     else:
+        #         parts = []
+        #         lines = part.split('\n')
+        #         for i, line in enumerate(lines):
+        #             if i > 0:
+        #                 line = indentation + line
+        #             while len(line) > 80:
+        #                 index = 80 - 1
+        #                 while line[index] != ' ':
+        #                     index -= 1
+        #                 first, rest = line[:index], line[index+1:]
+        #                 parts.append(first + '\n')
+        #                 line = indentation + rest
+        #             if line.strip():
+        #                 if i == 0 and len(lines) > 1:
+        #                     line = line + '\n'
+        #                 parts.append(line)
+        #         new_parts.extend(parts)
+        #
+        # self.show_event(new_parts)
 
     def host_says(self, message):
         self.player_says(self.HOST, message)
 
+    @staticmethod
+    def format_score(score):
+        return f'${score:,}'
+
     def show_question(self, question):
-        self.host_says(f'In {question.category} for ${question.value}:\n      {question.text}')
+        self.host_says([
+            'In ',
+            TaggedText(question.category, 'bold'),
+            ' for ',
+            TaggedText(self.format_score(question.value), 'green'),
+            f': {question.text}',
+        ])
 
     def handle_user_input(self, event):
         user_input = self.input_text.get()
@@ -146,7 +211,7 @@ class JeopardyApp(tk.Frame):
             player.total_answers += 1
             self.player_says(self.nick, f'What is {user_input}?')
             resp = self.client.answer(user_input)
-            if resp.is_correct:
+            if resp is not None and resp.is_correct:
                 host_response = f'{self.nick}, that is correct.'
                 player.correct_answers += 1
                 player.score += resp.value
