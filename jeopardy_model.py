@@ -25,13 +25,8 @@ class Model:
 
 
 @dataclass
-class ClientIDResponse(Model):
-    client_id: str
-
-
-@dataclass
-class ClientInfo(Model):
-    client_id: str
+class PlayerInfo(Model):
+    player_id: str
     client_address: str
     nick: str
     correct_answers: int = 0
@@ -42,7 +37,7 @@ class ClientInfo(Model):
 @dataclass
 class RegisterRequest(Model):
     address: str
-    client_id: str
+    player_id: str
     nick: str
 
 

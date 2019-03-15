@@ -13,8 +13,8 @@ import requests
 from nltk.corpus import stopwords
 from nltk.stem.snowball import EnglishStemmer
 
-from flask_utils import get_client_id
-from jeopardy_model import ClientInfo, Event, Question
+from flask_utils import get_player_id
+from jeopardy_model import Event, PlayerInfo, Question
 
 
 MATCH_RATIO_THRESHOLD = 0.75
@@ -27,51 +27,51 @@ stemmer = EnglishStemmer()
 class Game:
 
     def __init__(self):
-        self.clients = {}
+        self.players = {}
         self.current_question = None
         self.in_progress = False
         self.lock = RLock()
         self.pool = Pool(8)
 
-    def register_client(self, register_req):
-        if register_req.client_id not in self.clients:
-            client = ClientInfo(
-                client_id=register_req.client_id,
+    def register_player(self, register_req):
+        if register_req.player_id not in self.players:
+            player = PlayerInfo(
+                player_id=register_req.player_id,
                 client_address=register_req.address,
                 nick=register_req.nick
             )
-            self.clients[register_req.client_id] = client
+            self.players[register_req.player_id] = player
             event = Event(
                 event_type='NEW_PLAYER',
-                payload=client.to_json()
+                payload=player.to_json()
             )
             self.notify(event)
 
-    def remove_client(self, client_id):
-        if client_id in self.clients:
-            client = self.clients[client_id]
-            del self.clients[client_id]
+    def remove_player(self, player_id):
+        if player_id in self.players:
+            player = self.players[player_id]
+            del self.players[player_id]
             event = Event(
                 event_type='PLAYER_LEFT',
-                payload=client.to_json()
+                payload=player.to_json()
             )
             self.notify(event)
 
-    def get_client(self, client_id):
-        return self.clients.get(client_id)
+    def get_player(self, player_id):
+        return self.players.get(player_id)
 
     def notify(self, event, exclude=None):
-        self.pool.submit(self.notify_clients, event, exclude=exclude)
+        self.pool.submit(self.notify_players, event, exclude=exclude)
 
-    def notify_clients(self, event, exclude=None):
+    def notify_players(self, event, exclude=None):
         if exclude is None:
             exclude = set()
         event_json = event.to_json()
-        for client_id, client_info in self.clients.items():
-            if client_id not in exclude:
-                resp = requests.post(f'http://{client_info.client_address}/notify', json=event_json)
+        for player_id, player_info in self.players.items():
+            if player_id not in exclude:
+                resp = requests.post(f'http://{player_info.client_address}/notify', json=event_json)
                 if not resp.ok:
-                    print(f'Failed to notify client: {resp.text}')
+                    print(f'Failed to notify player: {resp.text}')
 
     def start(self):
         with self.lock:
@@ -83,7 +83,7 @@ class Game:
                 self.in_progress = True
                 self.update_current_question(question)
 
-    def update_current_question(self, question, client_id=None):
+    def update_current_question(self, question, player_id=None):
         with self.lock:
             if self.current_question is None or question is None:
                 self.current_question = question
@@ -92,23 +92,23 @@ class Game:
                         event_type='NEW_QUESTION',
                         payload=question.to_json()
                     )
-                    exclude = {client_id} if client_id is not None else None
+                    exclude = {player_id} if player_id is not None else None
                     self.notify(event, exclude=exclude)
                     self.pool.submit(self.question_timeout, question)
 
     def check_guess(self, guess):
         correct = check_guess(guess, self.current_question.answer)
-        client = self.get_client(get_client_id())
-        client.total_answers += 1
+        player = self.get_player(get_player_id())
+        player.total_answers += 1
         if correct:
-            client.correct_answers += 1
-            client.score += self.current_question.value
+            player.correct_answers += 1
+            player.score += self.current_question.value
             self.update_current_question(None)
         event = Event(
             event_type='NEW_ANSWER',
             payload={
                 'answer': guess,
-                'client': client.to_json(),
+                'player': player.to_json(),
                 'is_correct': correct
             }
         )

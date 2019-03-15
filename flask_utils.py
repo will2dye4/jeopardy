@@ -25,5 +25,5 @@ def no_content():
     return '', 204
 
 
-def get_client_id():
-    return request.headers['X-Jeopardy-Client-ID']
+def get_player_id():
+    return request.headers['X-Jeopardy-Player-ID']

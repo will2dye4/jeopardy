@@ -1,43 +1,22 @@
-#!/usr/bin/env python3
-
 import os
-import random
-import subprocess
-import time
 import uuid
-
-from multiprocessing import Process
 
 import requests
 
-from flask import Flask, request
-
-from flask_utils import no_content, to_json
-from jeopardy_model import Answer, AnswerResponse, ClientIDResponse, Event, Question, RegisterRequest
-
-
-SUPPRESS_FLASK_LOGGING = True
+from jeopardy_model import Answer, AnswerResponse, Question, RegisterRequest
 
 
 class JeopardyClient:
 
-    def __init__(self, server_address=None, nick=None, event_handler=None):
+    def __init__(self, server_address=None, player_id=None):
         if server_address is None:
             server_address = os.getenv('JEOPARDY_SERVER_ADDRESS')
             if server_address is None:
                 raise ValueError('Must provide server_address or set JEOPARDY_SERVER_ADDRESS environment variable')
-        if nick is None:
-            nick = os.getenv('JEOPARDY_CLIENT_NICKNAME')
-        self.client_id = str(uuid.uuid4())
-        self.nick = nick or self.client_id
+        self.player_id = player_id or str(uuid.uuid4())
         self.server_address = server_address
         self.server_session = requests.Session()
-        self.server_session.headers.update({'X-Jeopardy-Client-ID': self.client_id})
-        self.port = random.randrange(65000, 65536)
-        self.app_process = None
-        if event_handler is not None:
-            self.start_app_process(event_handler)
-            self.register()
+        self.server_session.headers.update({'X-Jeopardy-Player-ID': self.player_id})
 
     def __enter__(self):
         return self
@@ -54,14 +33,11 @@ class JeopardyClient:
     def post(self, path, *args, **kwargs):
         return self.server_session.post(self.server_url(path), *args, **kwargs)
 
-    def register(self):
-        external_ip = subprocess.getoutput(r'ifconfig | grep -A3 en0 | grep -E "inet\b" | cut -d" " -f2')
-        if not external_ip:
-            raise RuntimeError('Failed to find external IP')
+    def register(self, address, nick):
         register_req = RegisterRequest(
-            address=f'{external_ip}:{self.port}',
-            client_id=self.client_id,
-            nick=self.nick
+            address=address,
+            player_id=self.player_id,
+            nick=nick
         )
         resp = self.post('/register', json=register_req.to_json())
         if resp.ok:
@@ -99,62 +75,5 @@ class JeopardyClient:
             print('Failed to submit answer to server')
             return None
 
-    def start_app_process(self, event_handler):
-        if self.app_process is not None:
-            return
-
-        app = ClientApp(self.client_id, event_handler)
-
-        def app_target():
-            if SUPPRESS_FLASK_LOGGING:
-                import click
-                import logging
-                log = logging.getLogger('werkzeug')
-                log.disabled = True
-                setattr(click, 'echo', lambda *a, **k: None)
-                setattr(click, 'secho', lambda *a, **k: None)
-            app.run(host='0.0.0.0', port=self.port)
-
-        self.app_process = Process(target=app_target)
-        self.app_process.start()
-        print(f'Client app running on port {self.port}')
-
     def close(self):
-        try:
-            self.goodbye()  # tell the server we are going away
-        finally:
-            if self.app_process is not None:
-                self.app_process.terminate()
-                self.app_process.join()
-                self.app_process.close()
-                print('Client app stopped')
-
-
-class ClientApp(Flask):
-
-    def __init__(self, client_id, event_handler, *args, **kwargs):
-        super().__init__(f'jeopardy-client-{client_id}', *args, **kwargs)
-        self.client_id = client_id
-        self.event_handler = event_handler
-        self.route('/')(self.root)
-        self.route('/id')(self.id)
-        self.route('/notify', methods=['POST'])(self.notify)
-
-    @to_json
-    def id(self):
-        return ClientIDResponse(self.client_id)
-
-    def notify(self):
-        try:
-            event = Event.from_request(request)
-        except (TypeError, ValueError):
-            return error('Failed to parse event')
-        try:
-            self.event_handler.handle(event)
-        except Exception as e:
-            print('Caught exception handling event:', e)
-        return no_content()
-
-    @staticmethod
-    def root():
-        return no_content()
+        self.goodbye()  # tell the server we are going away

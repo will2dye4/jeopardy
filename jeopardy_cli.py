@@ -1,6 +1,19 @@
+import os
+import random
+import subprocess
+import uuid
+
+from multiprocessing import Process
+
+from flask import Flask, request
+
 from colorize import bold, green
+from flask_utils import error, no_content
 from jeopardy_client import JeopardyClient
-from jeopardy_model import ClientInfo, Question
+from jeopardy_model import Event, PlayerInfo, Question
+
+
+SUPPRESS_FLASK_LOGGING = True
 
 
 class JeopardyCLI:
@@ -8,8 +21,15 @@ class JeopardyCLI:
     HOST = 'Host'
 
     def __init__(self, server_address=None, nick=None):
-        self.client = JeopardyClient(server_address, nick)
+        if nick is None:
+            nick = os.getenv('JEOPARDY_CLIENT_NICKNAME')
+        self.player_id = str(uuid.uuid4())
+        self.nick = nick or self.player_id
+        self.client = JeopardyClient(server_address, self.player_id)
         self.current_question_id = None
+        self.port = random.randrange(65000, 65536)
+        self.app_process = self.start_app_process()
+        self.register()
 
     def __enter__(self):
         return self
@@ -35,15 +55,19 @@ class JeopardyCLI:
             resp_json = resp.json()
             if not resp_json:
                 print('Invalid response from server')
-            for client_info in resp_json['clients'].values():
-                client = ClientInfo(**client_info)
-                print(f'{client.nick}\t${client.score}\t({client.correct_answers}/{client.total_answers})')
+            for player_info in resp_json['players'].values():
+                player = PlayerInfo(**player_info)
+                print(f'{player.nick}\t${player.score}\t({player.correct_answers}/{player.total_answers})')
         else:
             print('Failed to fetch stats')
 
+    def register(self):
+        external_ip = subprocess.getoutput(r'ifconfig | grep -A3 en0 | grep -E "inet\b" | cut -d" " -f2')
+        if not external_ip:
+            raise RuntimeError('Failed to find external IP')
+        self.client.register(f'{external_ip}:{self.port}', self.nick)
+
     def play(self):
-        self.client.start_app_process(self)
-        self.client.register()
         self.client.start_game()
         try:
             while True:
@@ -76,17 +100,17 @@ class JeopardyCLI:
                 self.current_question_id = question.question_id
                 self.show_question(question)
         elif event.event_type == 'NEW_ANSWER':
-            client_id = event.payload['client']['client_id']
-            if client_id != self.client.client_id:
-                nick = event.payload['client']['nick']
+            player_id = event.payload['player']['player_id']
+            if player_id != self.player_id:
+                nick = event.payload['player']['nick']
                 answer = event.payload['answer']
                 correct = event.payload['is_correct']
                 self.player_says(nick, f'What is {answer}?')
                 host_response = f'{nick}, that is correct.' if correct else f'No, sorry, {nick}.'
                 self.host_says(host_response)
         elif event.event_type in {'NEW_PLAYER', 'PLAYER_LEFT'}:
-            client_id = event.payload['client_id']
-            if client_id != self.client.client_id:
+            player_id = event.payload['player_id']
+            if player_id != self.player_id:
                 nick = event.payload['nick']
                 verb = 'joined' if event.event_type == 'NEW_PLAYER' else 'left'
                 self.host_says(f'{nick} has {verb} the game.')
@@ -95,8 +119,62 @@ class JeopardyCLI:
         else:
             print(f'[!!] Received unexpected event: {event}')
 
+    def start_app_process(self):
+        app = ClientApp(self.player_id, self)
+
+        def app_target():
+            if SUPPRESS_FLASK_LOGGING:
+                import click
+                import logging
+                log = logging.getLogger('werkzeug')
+                log.disabled = True
+                setattr(click, 'echo', lambda *a, **k: None)
+                setattr(click, 'secho', lambda *a, **k: None)
+            app.run(host='0.0.0.0', port=self.port)
+
+        app_process = Process(target=app_target)
+        app_process.start()
+        print(f'Client app running on port {self.port}')
+        return app_process
+
     def close(self):
-        self.client.close()
+        try:
+            self.client.close()
+        finally:
+            if self.app_process is not None:
+                self.app_process.terminate()
+                self.app_process.join()
+                self.app_process.close()
+                print('Client app stopped')
+
+
+class ClientApp(Flask):
+
+    def __init__(self, player_id, event_handler, *args, **kwargs):
+        super().__init__(f'jeopardy-client-{player_id}', *args, **kwargs)
+        self.player_id = player_id
+        self.event_handler = event_handler
+        self.route('/')(self.root)
+        self.route('/id')(self.id)
+        self.route('/notify', methods=['POST'])(self.notify)
+
+    def id(self):
+        return self.player_id
+
+    def notify(self):
+        try:
+            event = Event.from_request(request)
+        except (TypeError, ValueError):
+            return error('Failed to parse event')
+        try:
+            self.event_handler.handle(event)
+        except Exception as e:
+            print('Caught exception handling event:', e)
+        return no_content()
+
+    @staticmethod
+    def root():
+        return no_content()
 
 
 if __name__ == '__main__':
