@@ -76,5 +76,5 @@ def submit_answer():
     except (TypeError, ValueError) as e:
         return error(f'Failed to parse answer: {e}', status=400)
 
-    correct = game.check_guess(answer.text)
-    return AnswerResponse(correct)
+    correct, value = game.check_guess(answer.text)
+    return AnswerResponse(correct, value)

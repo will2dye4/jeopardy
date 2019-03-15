@@ -1,6 +1,7 @@
 import os
 import random
 import subprocess
+import traceback
 import uuid
 
 from multiprocessing import Process
@@ -82,11 +83,8 @@ class JeopardyCLI:
                 elif user_input == '/s':
                     self.show_stats()
                 else:
-                    is_correct = self.client.answer(user_input)
-                    if is_correct:
-                        self.host_says('Correct!')
-                    else:
-                        self.host_says('Wrong.')
+                    resp = self.client.answer(user_input)
+                    self.host_says('Correct!' if resp.is_correct else 'Wrong.')
         except EOFError:
             print()
             self.host_says('Goodbye!')
@@ -166,8 +164,10 @@ class ClientApp(Flask):
             return error(f'Failed to parse event: {e}')
         try:
             self.event_handler.handle(event)
-        except Exception as e:
-            print('Caught exception handling event:', e)
+        except Exception:
+            print('Caught exception handling event')
+            print('Event:', str(event))
+            traceback.print_exc()
         return no_content()
 
     @staticmethod

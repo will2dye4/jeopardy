@@ -70,7 +70,7 @@ class JeopardyClient:
             except (TypeError, ValueError) as e:
                 print(f'Failed to parse answer response: {e}')
                 return None
-            return answer_resp.is_correct
+            return answer_resp
         else:
             print('Failed to submit answer to server')
             return None

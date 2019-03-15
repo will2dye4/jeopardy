@@ -79,6 +79,7 @@ class Answer(Model):
 @dataclass
 class AnswerResponse(Model):
     is_correct: bool
+    value: int
 
 
 @dataclass

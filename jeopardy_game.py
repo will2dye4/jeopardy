@@ -97,22 +97,27 @@ class Game:
                     self.pool.submit(self.question_timeout, question)
 
     def check_guess(self, guess):
-        correct = check_guess(guess, self.current_question.answer)
+        with self.lock:
+            if self.current_question is None:
+                return False
+            question = self.current_question
+        correct = check_guess(guess, question.answer)
         player = self.get_player(get_player_id())
         player.total_answers += 1
         if correct:
             player.correct_answers += 1
-            player.score += self.current_question.value
+            player.score += question.value
             self.update_current_question(None)
         event = self.make_event(
             event_type='NEW_ANSWER',
             payload={
                 'answer': guess,
-                'is_correct': correct
+                'is_correct': correct,
+                'value': question.value if correct else 0,
             }
         )
         self.notify(event)
-        return correct
+        return correct, question.value
 
     def is_current_question(self, question_id):
         return self.current_question is not None and self.current_question.question_id == question_id
