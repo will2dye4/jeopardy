@@ -72,8 +72,8 @@ def submit_answer():
     if game.current_question is None:
         return error('There is no current question', status=400)
 
-    correct, value = game.check_guess(request.get_data(as_text=True))
-    return AnswerResponse(correct, value)
+    correct, close, value = game.check_guess(request.get_data(as_text=True))
+    return AnswerResponse(is_correct=correct, is_close=close, value=value)
 
 
 @app.route('/chat', methods=['POST'])

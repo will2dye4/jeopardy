@@ -20,6 +20,9 @@ from jeopardy_model import Event, PlayerInfo, Question
 MATCH_RATIO_THRESHOLD = 0.75
 REMOVE_PUNCTUATION_TRANSLATIONS = {ord(char): None for char in string.punctuation}
 
+ANSWER_RE = re.compile(r'\([^()]*\)|[^()]+')
+URL_RE = re.compile(r'<a[^>]+>(?P<text>[^<]+)</a>')
+
 
 stemmer = EnglishStemmer()
 
@@ -101,7 +104,7 @@ class Game:
             if self.current_question is None:
                 return False
             question = self.current_question
-        correct = check_guess(guess, question.answer)
+        correct, close = check_guess(guess, question.answer)
         player = self.get_player(get_player_id())
         player.total_answers += 1
         if correct:
@@ -112,12 +115,13 @@ class Game:
             event_type='NEW_ANSWER',
             payload={
                 'answer': guess,
+                'is_close': close,
                 'is_correct': correct,
                 'value': question.value if correct else 0,
             }
         )
         self.notify(event)
-        return correct, question.value
+        return correct, close, question.value
 
     def post_chat_message(self, message):
         event = self.make_event(
@@ -153,31 +157,42 @@ def get_random_question():
     question_data = resp_json['question']
     return Question(
         question_id=str(uuid.uuid4()),
-        text=question_data['body'][1:-1].replace('<br />', '\n'),  # TODO more sanitization
+        text=sanitize_question(question_data['body'][1:-1]),
         answer=question_data['response'],
-        category=question_data['category']['name'].title(),
+        category=question_data['category']['name'],
         value=question_data['value']
     )
 
 
-# TODO return another variable indicating if the guess is close
+def sanitize_question(question):
+    # replace '<a href="...">text</a>' with 'text'
+    question = URL_RE.sub(lambda match: match.group('text'), question)
+    # replace HTML line breaks with newlines
+    question = question.replace('<br />', '\n')
+    # strip out backslashes
+    question = question.replace('\\', '')
+    # strip leading/trailing whitespace
+    return question.strip()
+
+
 def check_guess(guess, correct_answer):
-    potential_answers = re.findall(r'\([^()]*\)|[^()]+', correct_answer)
+    potential_answers = ANSWER_RE.findall(correct_answer)
     if len(potential_answers) == 2:
         for potential_answer in potential_answers:
             potential_answer = potential_answer.replace('(', '').replace(')', '')
-            if check_guess(guess, potential_answer):
-                return True
+            correct, close = check_guess(guess, potential_answer)
+            if correct:
+                return correct, close
 
     sequence_matcher = SequenceMatcher(None, guess, correct_answer)
     if sequence_matcher.ratio() >= MATCH_RATIO_THRESHOLD:
-        return True
+        return True, False
 
     guess_tokens = [process_token(token) for token in guess.split()]
     processed_answer_tokens = [process_token(token) for token in correct_answer.split()]
     answer_tokens = [tok for tok in processed_answer_tokens if tok not in stopwords.words('english')]
     matched = set(guess_tokens).intersection(set(answer_tokens))
-    return len(matched) == len(answer_tokens)
+    return len(matched) == len(answer_tokens), len(matched) > 0
 
 
 def process_token(token):

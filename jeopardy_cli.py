@@ -48,7 +48,7 @@ class JeopardyCLI:
 
     @classmethod
     def show_question(cls, question):
-        cls.host_says(f'In {bold(question.category)} for {green("$" + str(question.value))}:\n      {question.text}')
+        cls.host_says(f'In {bold(question.category.upper())} for {green("$" + str(question.value))}:\n      {question.text}')
 
     def show_stats(self):
         resp = self.client.get('/')
@@ -106,6 +106,7 @@ class JeopardyCLI:
             answer = event.payload['answer']
             correct = event.payload['is_correct']
             self.player_says(nick, f'What is {answer}?')
+            # TODO handle 'is_close'
             host_response = f'{nick}, that is correct.' if correct else f'No, sorry, {nick}.'
             self.host_says(host_response)
         elif event.event_type in {'NEW_PLAYER', 'PLAYER_LEFT'}:

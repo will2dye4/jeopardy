@@ -270,6 +270,8 @@ class JeopardyApp(ttk.Frame):
                     player.correct_answers += 1
                     player.score += resp.value
                     self.update_current_question(None)
+                elif resp is not None and resp.is_close:
+                    host_response = f'{self.nick}, can you be more specific?'
                 else:
                     host_response = f'No, sorry, {self.nick}.'
                 self.host_says(host_response)
@@ -289,6 +291,8 @@ class JeopardyApp(ttk.Frame):
             if event.payload['is_correct']:
                 host_response = f'{nick}, that is correct.'
                 self.question_timeout_queue.put(None)
+            elif event.payload['is_close']:
+                host_response = f'{nick}, can you be more specific?'
             else:
                 host_response = f'No, sorry, {nick}.'
             self.player_says(nick, f'What is {answer}?')
