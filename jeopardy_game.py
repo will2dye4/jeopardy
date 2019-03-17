@@ -158,7 +158,7 @@ def get_random_question():
     return Question(
         question_id=str(uuid.uuid4()),
         text=sanitize_question(question_data['body'][1:-1]),
-        answer=question_data['response'],
+        answer=sanitize_answer(question_data['response']),
         category=question_data['category']['name'],
         value=question_data['value']
     )
@@ -173,6 +173,11 @@ def sanitize_question(question):
     question = question.replace('\\', '')
     # strip leading/trailing whitespace
     return question.strip()
+
+
+def sanitize_answer(answer):
+    # strip out backslashes and leading/trailing whitespace
+    return answer.replace('\\', '').strip()
 
 
 def check_guess(guess, correct_answer):

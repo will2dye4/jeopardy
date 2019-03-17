@@ -29,6 +29,8 @@ class JeopardyApp(ttk.Frame):
 
     DARK_GRAY = '#333333'
     LIGHT_GRAY = '#CCCCCC'
+    MEDIUM_GRAY = '#888888'
+    MEDIUM_DARK_GRAY = '#555555'
     JEOPARDY_BLUE = '#060CE9'
     JEOPARDY_GOLD = '#CC8E3C'
     JEOPARDY_LIGHT_BLUE = '#115FF4'
@@ -70,26 +72,60 @@ class JeopardyApp(ttk.Frame):
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
 
+        self.dark_mode = dark_mode
+        if self.dark_mode:
+            self.default_background = self.DARK_GRAY
+            self.default_foreground = 'white'
+        else:
+            self.default_background = 'white'
+            self.default_foreground = 'black'
+
         self.stats_pane = None
         self.event_pane = None
         self.grid(sticky=tk.N + tk.S + tk.E + tk.W)
-        self.dark_mode = dark_mode
         self.configure_style()
         self.default_font = font.Font(self, family=self.FONT_FAMILY, size=14)
         self.bold_font = font.Font(self, family=self.FONT_FAMILY, size=14, weight='bold')
         self.main_pane = self.create_main_pane()
+        self.configure_tags()
         self.input_text = tk.StringVar(value='')
         self.input_pane = self.create_input_pane()
 
     def configure_style(self):
         style = ttk.Style()
-        style.configure('TEntry', borderwidth=0, highlightthickness=0)
         style.configure('TScrollbar', borderwidth=0)
         style.configure('Line.TFrame', background='black', foreground='black')
+
         if self.dark_mode:
-            style.configure('Main.TFrame', background=self.DARK_GRAY, borderwidth=0, highlightthickness=0)
+            input_background = self.MEDIUM_DARK_GRAY
         else:
-            style.configure('Main.TFrame', borderwidth=0, highlightthickness=0)
+            input_background = self.default_background
+
+        style.configure('TEntry', background=input_background, foreground=self.default_foreground,
+                        borderwidth=0, highlightthickness=0)
+
+    def configure_tags(self):
+        for pane in (self.stats_pane, self.event_pane):
+            # general tags
+            pane.tag_configure('bold', font=self.bold_font)
+            pane.tag_configure('centered', justify=tk.CENTER)
+            pane.tag_configure('small', font=(self.FONT_FAMILY, 4))
+            pane.tag_configure('line', background=self.default_foreground, font=(self.FONT_FAMILY, 2))
+
+            # tags for specific panes
+            pane.tag_configure('players_heading', font=(self.FONT_FAMILY, 16, 'bold'), background=self.JEOPARDY_BLUE,
+                               foreground='white', justify=tk.CENTER, spacing1=6, spacing3=6)
+            pane.tag_configure('welcome_title', background=self.JEOPARDY_VIOLET, foreground='white',
+                               font=(self.FONT_FAMILY, 24, 'bold'), justify=tk.CENTER, lmargin1=10, rmargin=10,
+                               spacing1=10, spacing3=5)
+            pane.tag_configure('welcome_text', background=self.JEOPARDY_VIOLET, foreground='white', justify=tk.CENTER,
+                               lmargin1=10, lmargin2=10, rmargin=10, spacing1=5, spacing3=10)
+            pane.tag_configure('question_category', background=self.JEOPARDY_BLUE, font=(self.FONT_FAMILY, 16, 'bold'),
+                               foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
+            pane.tag_configure('question_value', background=self.JEOPARDY_LIGHT_BLUE, foreground='white',
+                               font=(self.FONT_FAMILY, 16), justify=tk.CENTER, spacing1=3, spacing3=3)
+            pane.tag_configure('question_text', background=self.default_background, foreground=self.default_foreground,
+                               justify=tk.CENTER, lmargin1=5, lmargin2=5, rmargin=5, spacing1=3, spacing3=3)
 
     def create_main_pane(self):
         main_pane = ttk.Frame(self, height=600, width=600, style='Main.TFrame')
@@ -104,33 +140,17 @@ class JeopardyApp(ttk.Frame):
         return main_pane
 
     def create_stats_pane(self, parent):
-        pane = tk.Text(parent, height=50, width=20, font=self.default_font, background=self.LIGHT_GRAY, borderwidth=0, highlightthickness=0, state=tk.DISABLED, takefocus=0, undo=False)
-        pane.tag_configure('heading', font=(self.FONT_FAMILY, 16, 'bold'), background=self.JEOPARDY_BLUE, foreground='white', justify=tk.CENTER, spacing1=6, spacing3=6)
-        pane.tag_configure('bold', font=self.bold_font, justify=tk.CENTER)
-        pane.tag_configure('centered', justify=tk.CENTER)
+        background = self.MEDIUM_GRAY if self.dark_mode else self.LIGHT_GRAY
+        pane = tk.Text(parent, height=50, width=20, font=self.default_font, background=background,
+                       foreground=self.default_foreground, borderwidth=0, highlightthickness=0, state=tk.DISABLED,
+                       takefocus=0, undo=False)
         pane.grid(row=0, column=0, sticky=tk.N + tk.S)
         return pane
 
     def create_event_pane(self, parent):
-        if self.dark_mode:
-            background = self.DARK_GRAY
-            foreground = 'white'
-        else:
-            background = 'white'
-            foreground = 'black'
-        pane = tk.Text(parent, height=50, width=80, font=self.default_font, background=background, foreground=foreground, borderwidth=0, highlightthickness=0, wrap=tk.WORD, state=tk.DISABLED, takefocus=0, undo=False)
-        pane.tag_configure('bold', font=self.bold_font)
-        small_font = font.Font(pane, self.FONT_FAMILY)
-        small_font.configure(size=4)
-        pane.tag_configure('small', font=small_font)
-        pane.tag_configure('welcome_title', background=self.JEOPARDY_VIOLET, foreground='white', font=(self.FONT_FAMILY, 24, 'bold'), justify=tk.CENTER, lmargin1=10, rmargin=10, spacing1=10, spacing3=5)
-        pane.tag_configure('welcome_text', background=self.JEOPARDY_VIOLET, foreground='white', justify=tk.CENTER, lmargin1=10, lmargin2=10, rmargin=10, spacing1=5, spacing3=10)
-        pane.tag_configure('question_category', background=self.JEOPARDY_BLUE, font=(self.FONT_FAMILY, 16, 'bold'), foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
-        pane.tag_configure('question_value', background=self.JEOPARDY_LIGHT_BLUE, foreground='white', font=(self.FONT_FAMILY, 16), justify=tk.CENTER, spacing1=3, spacing3=3)
-        pane.tag_configure('question_text', background='white', foreground='black', justify=tk.CENTER, lmargin1=5, lmargin2=5, rmargin=5, spacing1=3, spacing3=3)
-        tiny_font = font.Font(pane, self.FONT_FAMILY)
-        tiny_font.configure(size=2)
-        pane.tag_configure('line', background='black', font=tiny_font)
+        pane = tk.Text(parent, height=50, width=80, font=self.default_font, background=self.default_background,
+                       foreground=self.default_foreground, borderwidth=0, highlightthickness=0, wrap=tk.WORD,
+                       state=tk.DISABLED, takefocus=0, undo=False)
         scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=pane.yview)
         pane.configure(yscrollcommand=scrollbar.set)
         pane.grid(row=0, column=2, sticky=tk.N + tk.S + tk.E + tk.W)
@@ -138,7 +158,7 @@ class JeopardyApp(ttk.Frame):
         return pane
 
     def create_input_pane(self):
-        pane = ttk.Entry(self, width=80, style='TEntry', textvariable=self.input_text)
+        pane = ttk.Entry(self, width=80, font=self.default_font, style='TEntry', textvariable=self.input_text)
         pane.bind('<KeyPress-Return>', self.handle_user_input)
         pane.grid(row=1, column=0, sticky=tk.E + tk.W)
         return pane
@@ -182,12 +202,12 @@ class JeopardyApp(ttk.Frame):
         align = self.longest_player_nick + 2
         self.stats_pane.configure(state=tk.NORMAL)
         self.stats_pane.delete('1.0', tk.END)
-        self.stats_pane.insert('1.0', 'Players\n', ('heading',))
+        self.stats_pane.insert('1.0', 'Players\n', ('players_heading',))
         self.stats_pane.insert(tk.END, '\n')
         for player in sorted_players:
             player_stats = f'{player.nick:{align}}{self.format_score(player.score)}\n'
             if player.player_id == self.player_id:
-                self.stats_pane.insert(tk.END, player_stats, ('bold',))
+                self.stats_pane.insert(tk.END, player_stats, ('bold', 'centered'))
             else:
                 self.stats_pane.insert(tk.END, player_stats, ('centered',))
         self.stats_pane.configure(state=tk.DISABLED)
