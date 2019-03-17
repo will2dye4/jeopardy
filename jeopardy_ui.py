@@ -43,7 +43,7 @@ class JeopardyApp(ttk.Frame):
         'To answer a question, simply enter your answer in the text box.\n'
     )
 
-    def __init__(self, master=None, server_address=None, nick=None, dark_mode=False):
+    def __init__(self, master=None, server_address=None, player_id=None, nick=None, dark_mode=False):
         if master is None:
             master = tk.Tk()
             master.minsize(width=400, height=300)
@@ -53,7 +53,7 @@ class JeopardyApp(ttk.Frame):
 
         if nick is None:
             nick = os.getenv('JEOPARDY_CLIENT_NICKNAME')
-        self.player_id = str(uuid.uuid4())
+        self.player_id = player_id or str(uuid.uuid4())
         self.nick = nick or self.player_id
         self.players = {}
         self.client = JeopardyClient(server_address, self.player_id)
@@ -63,7 +63,7 @@ class JeopardyApp(ttk.Frame):
         self.app_process = None
         self.event_queue = Queue(maxsize=100)
         self.stats_queue = Queue(maxsize=100)
-        self.question_timeout_queue = Queue(maxsize=1)
+        self.question_queue = Queue(maxsize=1)
 
         # enable resizing
         top = self.winfo_toplevel()
@@ -86,6 +86,7 @@ class JeopardyApp(ttk.Frame):
         self.configure_style()
         self.default_font = font.Font(self, family=self.FONT_FAMILY, size=14)
         self.bold_font = font.Font(self, family=self.FONT_FAMILY, size=14, weight='bold')
+        self.italic_font = font.Font(self, family=self.FONT_FAMILY, size=14, slant='italic')
         self.main_pane = self.create_main_pane()
         self.configure_tags()
         self.input_text = tk.StringVar(value='')
@@ -115,6 +116,7 @@ class JeopardyApp(ttk.Frame):
             # tags for specific panes
             pane.tag_configure('players_heading', font=(self.FONT_FAMILY, 16, 'bold'), background=self.JEOPARDY_BLUE,
                                foreground='white', justify=tk.CENTER, spacing1=6, spacing3=6)
+            pane.tag_configure('players_inactive', font=self.italic_font, foreground=self.MEDIUM_GRAY)
             pane.tag_configure('welcome_title', background=self.JEOPARDY_VIOLET, foreground='white',
                                font=(self.FONT_FAMILY, 24, 'bold'), justify=tk.CENTER, lmargin1=10, rmargin=10,
                                spacing1=10, spacing3=5)
@@ -198,18 +200,39 @@ class JeopardyApp(ttk.Frame):
             print('Failed to fetch stats')
 
     def update_stats(self):
-        sorted_players = sorted(self.players.values(), key=lambda p: p.score, reverse=True)
-        align = self.longest_player_nick + 2
+        def get_stats(player, alignment):
+            return f'{player.nick:{len(player.nick) + alignment}}{self.format_score(player.score)}\n'
+
+        if not self.players:
+            return
+
+        stats = {
+            player_id: f'{player.nick}{self.format_score(player.score)}'
+            for player_id, player in self.players.items()
+        }
+        longest_stats_len = max(len(s) for s in stats.values())
+
+        active_players = [player for player in self.players.values() if player.is_active]
+        inactive_players = [player for player in self.players.values() if not player.is_active]
+        sorted_active_players = sorted(active_players, key=lambda p: p.score, reverse=True)
+        sorted_inactive_players = sorted(inactive_players, key=lambda p: p.score, reverse=True)
         self.stats_pane.configure(state=tk.NORMAL)
         self.stats_pane.delete('1.0', tk.END)
         self.stats_pane.insert('1.0', 'Players\n', ('players_heading',))
         self.stats_pane.insert(tk.END, '\n')
-        for player in sorted_players:
-            player_stats = f'{player.nick:{align}}{self.format_score(player.score)}\n'
+
+        for player in sorted_active_players:
+            align = (longest_stats_len - len(stats[player.player_id])) + 2
+            player_stats = get_stats(player, align)
             if player.player_id == self.player_id:
                 self.stats_pane.insert(tk.END, player_stats, ('bold', 'centered'))
             else:
                 self.stats_pane.insert(tk.END, player_stats, ('centered',))
+
+        for player in sorted_inactive_players:
+            align = (longest_stats_len - len(stats[player.player_id])) + 2
+            self.stats_pane.insert(tk.END, get_stats(player, align), ('players_inactive', 'centered'))
+
         self.stats_pane.configure(state=tk.DISABLED)
 
     def register(self):
@@ -304,13 +327,13 @@ class JeopardyApp(ttk.Frame):
             self.host_says('A new game is starting!')
         elif event.event_type == 'NEW_QUESTION':
             question = Question.from_json(event.payload)
-            self.maybe_update_and_show_question(question)
+            self.question_queue.put_nowait(question)
         elif event.event_type == 'NEW_ANSWER':
             nick = event.player.nick
             answer = event.payload['answer']
             if event.payload['is_correct']:
                 host_response = f'{nick}, that is correct.'
-                self.question_timeout_queue.put(None)
+                self.question_queue.put_nowait(None)
             elif event.payload['is_close']:
                 host_response = f'{nick}, can you be more specific?'
             else:
@@ -324,7 +347,7 @@ class JeopardyApp(ttk.Frame):
             self.host_says(f'{nick} has {verb} the game.')
             self.show_stats_update(event)
         elif event.event_type == 'QUESTION_TIMEOUT':
-            self.question_timeout_queue.put(None)
+            self.question_queue.put_nowait(None)
             self.host_says(f'The correct answer is: {event.payload["answer"]}')
         elif event.event_type == 'CHAT_MESSAGE':
             nick = event.player.nick
@@ -333,9 +356,12 @@ class JeopardyApp(ttk.Frame):
             print(f'[!!] Received unexpected event: {event}')
 
     def tick(self):
-        if not self.question_timeout_queue.empty():
-            _ = self.question_timeout_queue.get_nowait()
-            self.update_current_question(None)
+        if not self.question_queue.empty():
+            question = self.question_queue.get_nowait()
+            if question is None:
+                self.update_current_question(None)
+            else:
+                self.maybe_update_and_show_question(question)
 
         while not self.event_queue.empty():
             event = self.event_queue.get_nowait()
@@ -343,10 +369,7 @@ class JeopardyApp(ttk.Frame):
 
         while not self.stats_queue.empty():
             event = self.stats_queue.get_nowait()
-            if event.event_type in {'NEW_ANSWER', 'NEW_PLAYER'}:
-                self.players[event.player.player_id] = event.player
-            elif event.event_type == 'PLAYER_LEFT':
-                del self.players[event.player.player_id]
+            self.players[event.player.player_id] = event.player
 
         self.update_stats()
         self.update()

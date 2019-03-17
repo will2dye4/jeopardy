@@ -48,6 +48,7 @@ class PlayerInfo(Model):
     correct_answers: int = 0
     total_answers: int = 0
     score: int = 0
+    is_active: bool = False
 
 
 @dataclass
@@ -83,3 +84,10 @@ class Event(Model):
     event_type: str
     player: PlayerInfo
     payload: Dict[str, Any]
+
+
+@dataclass
+class ClientConfig(Model):
+    player_id: str
+    server_address: str
+    nick: str

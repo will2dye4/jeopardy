@@ -1,3 +1,5 @@
+import atexit
+
 import requests
 
 from flask import Flask, jsonify, request
@@ -9,6 +11,14 @@ from jeopardy_model import AnswerResponse, RegisterRequest
 
 app = Flask(__name__)
 game = Game()
+
+
+def shutdown():
+    print(f'Received shutdown signal, saving game file')
+    game.save_game_file()
+
+
+atexit.register(shutdown)
 
 
 @app.route('/')
@@ -26,6 +36,10 @@ def register():
         register_req = RegisterRequest.from_request(request)
     except (TypeError, ValueError) as e:
         return error(f'Failed to parse register request: {e}', status=400)
+
+    if any(player.is_active and player.nick == register_req.nick for player in game.players.values()):
+        return error(f'Nick {register_req.nick} is already in use', status=400)
+
     # ping the client to make sure it's up
     resp = requests.get(f'http://{register_req.address}/id')
     if resp.ok and resp.text == register_req.player_id:

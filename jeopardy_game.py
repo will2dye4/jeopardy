@@ -1,4 +1,6 @@
 import datetime
+import json
+import os
 import re
 import string
 import time
@@ -6,7 +8,7 @@ import uuid
 
 from concurrent.futures import ThreadPoolExecutor as Pool
 from difflib import SequenceMatcher
-from threading import RLock
+from threading import Lock, RLock
 
 import requests
 
@@ -29,28 +31,60 @@ stemmer = EnglishStemmer()
 
 class Game:
 
-    def __init__(self):
+    DEFAULT_FILEPATH = 'jeopardy_game.json'
+
+    def __init__(self, load_from_file=True):
         self.players = {}
         self.current_question = None
         self.in_progress = False
         self.lock = RLock()
         self.pool = Pool(8)
+        self.file_lock = Lock()
+        if load_from_file:
+            self.load_game_file()
+
+    def load_game_file(self):
+        with self.file_lock:
+            if os.path.exists(self.DEFAULT_FILEPATH):
+                with open(self.DEFAULT_FILEPATH) as game_file:
+                    players = json.load(game_file)
+                    for player_id, player in players.items():
+                        player['client_address'] = None
+                        self.players[player_id] = PlayerInfo.from_json(player)
+
+    def save_game_file(self):
+        with self.file_lock:
+            players = {}
+            for player_id, player in self.players.items():
+                player = player.to_json()
+                del player['client_address']
+                del player['is_active']
+                players[player_id] = player
+            with open(self.DEFAULT_FILEPATH, 'w') as game_file:
+                json.dump(players, game_file)
 
     def register_player(self, register_req):
-        if register_req.player_id not in self.players:
+        player_id = register_req.player_id
+        if player_id in self.players and self.players[player_id].is_active:
+            return
+        if player_id in self.players:
+            self.players[player_id].client_address = register_req.address
+            self.players[player_id].is_active = True
+        else:
             player = PlayerInfo(
-                player_id=register_req.player_id,
+                player_id=player_id,
                 client_address=register_req.address,
-                nick=register_req.nick
+                nick=register_req.nick,
+                is_active=True
             )
-            self.players[register_req.player_id] = player
-            event = self.make_event('NEW_PLAYER')
-            self.notify(event)
+            self.players[player_id] = player
+        event = self.make_event('NEW_PLAYER')
+        self.notify(event)
 
     def remove_player(self, player_id):
         if player_id in self.players:
+            self.players[player_id].is_active = False
             event = self.make_event('PLAYER_LEFT')
-            del self.players[player_id]
             self.notify(event)
 
     def get_player(self, player_id):
@@ -72,10 +106,11 @@ class Game:
 
     def notify_players(self, event):
         event_json = event.to_json()
-        for player_id, player_info in self.players.items():
-            resp = requests.post(f'http://{player_info.client_address}/notify', json=event_json)
-            if not resp.ok:
-                print(f'Failed to notify player: {resp.text}')
+        for player_id, player in self.players.items():
+            if player.is_active:
+                resp = requests.post(f'http://{player.client_address}/notify', json=event_json)
+                if not resp.ok:
+                    print(f'Failed to notify player: {resp.text}')
 
     def start(self):
         with self.lock:

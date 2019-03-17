@@ -1,0 +1,4 @@
+blinker
+flask
+nltk
+requests
