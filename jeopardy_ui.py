@@ -30,8 +30,16 @@ class JeopardyApp(ttk.Frame):
     DARK_GRAY = '#333333'
     LIGHT_GRAY = '#CCCCCC'
     JEOPARDY_BLUE = '#060CE9'
+    JEOPARDY_GOLD = '#CC8E3C'
     JEOPARDY_LIGHT_BLUE = '#115FF4'
     JEOPARDY_VIOLET = '#8D2AB5'
+
+    WELCOME_TEXT = (
+        'Use the text box at the bottom to enter commands and answers. '
+        'To fetch a new question, enter "/q" (or just press Enter). '
+        'To send a chat message, enter "/c" followed by your message. '
+        'To answer a question, simply enter your answer in the text box.\n'
+    )
 
     def __init__(self, master=None, server_address=None, nick=None, dark_mode=False):
         if master is None:
@@ -53,6 +61,7 @@ class JeopardyApp(ttk.Frame):
         self.app_process = None
         self.event_queue = Queue(maxsize=100)
         self.stats_queue = Queue(maxsize=100)
+        self.question_timeout_queue = Queue(maxsize=1)
 
         # enable resizing
         top = self.winfo_toplevel()
@@ -66,9 +75,8 @@ class JeopardyApp(ttk.Frame):
         self.grid(sticky=tk.N + tk.S + tk.E + tk.W)
         self.dark_mode = dark_mode
         self.configure_style()
-        self.default_font = font.Font(self, self.FONT_FAMILY)
-        self.bold_font = font.Font(self, self.FONT_FAMILY)
-        self.bold_font.configure(weight='bold')
+        self.default_font = font.Font(self, family=self.FONT_FAMILY, size=14)
+        self.bold_font = font.Font(self, family=self.FONT_FAMILY, size=14, weight='bold')
         self.main_pane = self.create_main_pane()
         self.input_text = tk.StringVar(value='')
         self.input_pane = self.create_input_pane()
@@ -97,7 +105,7 @@ class JeopardyApp(ttk.Frame):
 
     def create_stats_pane(self, parent):
         pane = tk.Text(parent, height=50, width=20, font=self.default_font, background=self.LIGHT_GRAY, borderwidth=0, highlightthickness=0, state=tk.DISABLED, takefocus=0, undo=False)
-        pane.tag_configure('heading', font=self.bold_font, background=self.JEOPARDY_BLUE, foreground='white', justify=tk.CENTER, spacing1=6, spacing3=6)
+        pane.tag_configure('heading', font=(self.FONT_FAMILY, 16, 'bold'), background=self.JEOPARDY_BLUE, foreground='white', justify=tk.CENTER, spacing1=6, spacing3=6)
         pane.tag_configure('bold', font=self.bold_font, justify=tk.CENTER)
         pane.tag_configure('centered', justify=tk.CENTER)
         pane.grid(row=0, column=0, sticky=tk.N + tk.S)
@@ -115,9 +123,11 @@ class JeopardyApp(ttk.Frame):
         small_font = font.Font(pane, self.FONT_FAMILY)
         small_font.configure(size=4)
         pane.tag_configure('small', font=small_font)
-        pane.tag_configure('question_category', background=self.JEOPARDY_BLUE, font=self.bold_font, foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
-        pane.tag_configure('question_value', background=self.JEOPARDY_LIGHT_BLUE, foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
-        pane.tag_configure('question_text', background='white', foreground='black', justify=tk.CENTER, spacing1=3, spacing3=3)
+        pane.tag_configure('welcome_title', background=self.JEOPARDY_VIOLET, foreground='white', font=(self.FONT_FAMILY, 24, 'bold'), justify=tk.CENTER, lmargin1=10, rmargin=10, spacing1=10, spacing3=5)
+        pane.tag_configure('welcome_text', background=self.JEOPARDY_VIOLET, foreground='white', justify=tk.CENTER, lmargin1=10, lmargin2=10, rmargin=10, spacing1=5, spacing3=10)
+        pane.tag_configure('question_category', background=self.JEOPARDY_BLUE, font=(self.FONT_FAMILY, 16, 'bold'), foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
+        pane.tag_configure('question_value', background=self.JEOPARDY_LIGHT_BLUE, foreground='white', font=(self.FONT_FAMILY, 16), justify=tk.CENTER, spacing1=3, spacing3=3)
+        pane.tag_configure('question_text', background='white', foreground='black', justify=tk.CENTER, lmargin1=5, lmargin2=5, rmargin=5, spacing1=3, spacing3=3)
         tiny_font = font.Font(pane, self.FONT_FAMILY)
         tiny_font.configure(size=2)
         pane.tag_configure('line', background='black', font=tiny_font)
@@ -228,7 +238,7 @@ class JeopardyApp(ttk.Frame):
         self.show_event([
             '\n',
             TaggedText('\n', 'line'),
-            TaggedText(question.category + '\n', 'question_category'),
+            TaggedText(question.category.upper() + '\n', 'question_category'),
             TaggedText(self.format_score(question.value) + '\n', 'question_value'),
             TaggedText(question.text + '\n', 'question_text'),
             TaggedText('\n', 'line'),
@@ -259,6 +269,7 @@ class JeopardyApp(ttk.Frame):
                     host_response = f'{self.nick}, that is correct.'
                     player.correct_answers += 1
                     player.score += resp.value
+                    self.update_current_question(None)
                 else:
                     host_response = f'No, sorry, {self.nick}.'
                 self.host_says(host_response)
@@ -277,7 +288,7 @@ class JeopardyApp(ttk.Frame):
             answer = event.payload['answer']
             if event.payload['is_correct']:
                 host_response = f'{nick}, that is correct.'
-                self.update_current_question(None)
+                self.question_timeout_queue.put(None)
             else:
                 host_response = f'No, sorry, {nick}.'
             self.player_says(nick, f'What is {answer}?')
@@ -289,7 +300,7 @@ class JeopardyApp(ttk.Frame):
             self.host_says(f'{nick} has {verb} the game.')
             self.show_stats_update(event)
         elif event.event_type == 'QUESTION_TIMEOUT':
-            self.update_current_question(None)  # TODO - this isn't actually working
+            self.question_timeout_queue.put(None)
             self.host_says(f'The correct answer is: {event.payload["answer"]}')
         elif event.event_type == 'CHAT_MESSAGE':
             nick = event.player.nick
@@ -298,6 +309,10 @@ class JeopardyApp(ttk.Frame):
             print(f'[!!] Received unexpected event: {event}')
 
     def tick(self):
+        if not self.question_timeout_queue.empty():
+            _ = self.question_timeout_queue.get_nowait()
+            self.update_current_question(None)
+
         while not self.event_queue.empty():
             event = self.event_queue.get_nowait()
             self.append_to_event_pane(event)
@@ -318,6 +333,10 @@ class JeopardyApp(ttk.Frame):
         self.register()
         self.client.start_game()
         self.fetch_stats()
+        self.show_event([
+            TaggedText('Welcome to Jeopardy!\n', 'welcome_title'),
+            TaggedText(self.WELCOME_TEXT, 'welcome_text'),
+        ])
         self.tick()
         self.input_pane.focus_set()
 
