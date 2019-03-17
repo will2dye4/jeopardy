@@ -31,6 +31,7 @@ class JeopardyApp(ttk.Frame):
     LIGHT_GRAY = '#CCCCCC'
     MEDIUM_GRAY = '#888888'
     MEDIUM_DARK_GRAY = '#555555'
+    MEDIUM_LIGHT_GRAY = '#AAAAAA'
     JEOPARDY_BLUE = '#060CE9'
     JEOPARDY_GOLD = '#CC8E3C'
     JEOPARDY_LIGHT_BLUE = '#115FF4'
@@ -106,6 +107,11 @@ class JeopardyApp(ttk.Frame):
                         borderwidth=0, highlightthickness=0)
 
     def configure_tags(self):
+        if self.dark_mode:
+            inactive_player_foreground = self.LIGHT_GRAY
+        else:
+            inactive_player_foreground = self.MEDIUM_GRAY
+
         for pane in (self.stats_pane, self.event_pane):
             # general tags
             pane.tag_configure('bold', font=self.bold_font)
@@ -116,7 +122,7 @@ class JeopardyApp(ttk.Frame):
             # tags for specific panes
             pane.tag_configure('players_heading', font=(self.FONT_FAMILY, 16, 'bold'), background=self.JEOPARDY_BLUE,
                                foreground='white', justify=tk.CENTER, spacing1=6, spacing3=6)
-            pane.tag_configure('players_inactive', font=self.italic_font, foreground=self.MEDIUM_GRAY)
+            pane.tag_configure('players_inactive', font=self.italic_font, foreground=inactive_player_foreground)
             pane.tag_configure('welcome_title', background=self.JEOPARDY_VIOLET, foreground='white',
                                font=(self.FONT_FAMILY, 24, 'bold'), justify=tk.CENTER, lmargin1=10, rmargin=10,
                                spacing1=10, spacing3=5)
