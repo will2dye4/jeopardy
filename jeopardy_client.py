@@ -79,5 +79,11 @@ class JeopardyClient:
         if not resp.ok:
             print(f'Failed to post chat message: {resp.text}')
 
+    def change_nick(self, new_nick):
+        resp = self.post('/nick', data=new_nick)
+        if not resp.ok:
+            print(f'Failed to change nick: {resp.text}')
+        return resp.ok
+
     def close(self):
         self.goodbye()  # tell the server we are going away

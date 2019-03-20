@@ -80,6 +80,12 @@ class AnswerResponse(Model):
 
 
 @dataclass
+class NickUpdate(Model):
+    old_nick: str
+    new_nick: str
+
+
+@dataclass
 class Event(Model):
     event_type: str
     player: PlayerInfo
@@ -91,3 +97,4 @@ class ClientConfig(Model):
     player_id: str
     server_address: str
     nick: str
+    dark_mode: bool = False

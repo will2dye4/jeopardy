@@ -1,4 +1,3 @@
-import os
 import random
 import subprocess
 import tkinter as tk
@@ -12,7 +11,7 @@ from threading import RLock
 
 from jeopardy_cli import ClientApp
 from jeopardy_client import JeopardyClient
-from jeopardy_model import PlayerInfo, Question
+from jeopardy_model import NickUpdate, PlayerInfo, Question
 
 
 SUPPRESS_FLASK_LOGGING = True
@@ -41,6 +40,7 @@ class JeopardyApp(ttk.Frame):
         'Use the text box at the bottom to enter commands and answers. '
         'To fetch a new question, enter "/q" (or just press Enter). '
         'To send a chat message, enter "/c" followed by your message. '
+        'To change your nickname, enter "/n " followed by the new nickname. '
         'To answer a question, simply enter your answer in the text box.\n'
     )
 
@@ -52,8 +52,6 @@ class JeopardyApp(ttk.Frame):
         super().__init__(master)
         master.protocol('WM_DELETE_WINDOW', self.close)
 
-        if nick is None:
-            nick = os.getenv('JEOPARDY_CLIENT_NICKNAME')
         self.player_id = player_id or str(uuid.uuid4())
         self.nick = nick or self.player_id
         self.players = {}
@@ -306,6 +304,15 @@ class JeopardyApp(ttk.Frame):
             message = user_input[3:]
             self.client.chat(message)
             self.player_says(self.nick, message)
+        elif user_input.startswith('/n '):
+            new_nick = user_input[3:]
+            if new_nick != self.nick:
+                if self.client.change_nick(new_nick):
+                    self.nick = new_nick
+                    self.players[self.player_id].nick = new_nick
+                    self.host_says(f'You are now known as {new_nick}.')
+                else:
+                    self.host_says(f"Sorry, {self.nick}, I wasn't able to do that.")
         else:
             if self.current_question_id is None:
                 self.host_says(f'{self.nick}, there is currently no active question.')
@@ -358,6 +365,9 @@ class JeopardyApp(ttk.Frame):
         elif event.event_type == 'CHAT_MESSAGE':
             nick = event.player.nick
             self.player_says(nick, event.payload['message'])
+        elif event.event_type == 'NICK_CHANGED':
+            update = NickUpdate.from_json(event.payload)
+            self.host_says(f'{update.old_nick} is now known as {update.new_nick}')
         else:
             print(f'[!!] Received unexpected event: {event}')
 
@@ -428,8 +438,3 @@ class JeopardyApp(ttk.Frame):
                 self.app_process.close()
                 print('Client app stopped')
             self.master.destroy()
-
-
-if __name__ == '__main__':
-    app = JeopardyApp()
-    app.run()

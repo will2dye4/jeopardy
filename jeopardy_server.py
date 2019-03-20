@@ -37,7 +37,10 @@ def register():
     except (TypeError, ValueError) as e:
         return error(f'Failed to parse register request: {e}', status=400)
 
-    if any(player.is_active and player.nick == register_req.nick for player in game.players.values()):
+    if not register_req.address:
+        return error('No client address provided', status=400)
+
+    if is_invalid_nick(register_req.nick, register_req.player_id):
         return error(f'Nick {register_req.nick} is already in use', status=400)
 
     # ping the client to make sure it's up
@@ -94,3 +97,25 @@ def submit_answer():
 def chat():
     game.post_chat_message(request.get_data(as_text=True))
     return no_content()
+
+
+@app.route('/nick', methods=['POST'])
+def change_nick():
+    player_id = get_player_id()
+    if player_id not in game.players or not game.players[player_id].is_active:
+        return error('Cannot change nick for an inactive player', status=400)
+    new_nick = request.get_data(as_text=True)
+    if not new_nick:
+        return error('No nickname provided', status=400)
+    if is_invalid_nick(new_nick, player_id):
+        return error(f'Nick {new_nick} is already in use', status=400)
+    if new_nick != game.players[player_id].nick:
+        game.change_nick(new_nick)
+    return no_content()
+
+
+def is_invalid_nick(nick, player_id):
+    return any(
+        player.nick == nick and player.player_id != player_id
+        for player in game.players.values()
+    )

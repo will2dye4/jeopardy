@@ -16,7 +16,7 @@ from nltk.corpus import stopwords
 from nltk.stem.snowball import EnglishStemmer
 
 from flask_utils import get_player_id
-from jeopardy_model import Event, PlayerInfo, Question
+from jeopardy_model import Event, NickUpdate, PlayerInfo, Question
 
 
 MATCH_RATIO_THRESHOLD = 0.75
@@ -66,10 +66,20 @@ class Game:
     def register_player(self, register_req):
         player_id = register_req.player_id
         if player_id in self.players and self.players[player_id].is_active:
+            # if they're already active, just update address/nick and return
+            player = self.players[player_id]
+            print(f'Player {player_id} has moved from {player.client_address} to {register_req.address}')
+            player.client_address = register_req.address
+            if register_req.nick and register_req.nick != player.nick:
+                print(f'Player {player_id} (a/k/a {player.nick}) is now known as {register_req.nick}')
+                self.change_nick(register_req.nick)
             return
         if player_id in self.players:
-            self.players[player_id].client_address = register_req.address
-            self.players[player_id].is_active = True
+            player = self.players[player_id]
+            player.client_address = register_req.address
+            if register_req.nick:
+                player.nick = register_req.nick
+            player.is_active = True
         else:
             player = PlayerInfo(
                 player_id=player_id,
@@ -83,6 +93,7 @@ class Game:
 
     def remove_player(self, player_id):
         if player_id in self.players:
+            self.players[player_id].client_address = None
             self.players[player_id].is_active = False
             event = self.make_event('PLAYER_LEFT')
             self.notify(event)
@@ -162,6 +173,19 @@ class Game:
         event = self.make_event(
             event_type='CHAT_MESSAGE',
             payload={'message': message}
+        )
+        self.notify(event)
+
+    def change_nick(self, new_nick):
+        player = self.get_player(get_player_id())
+        if not player.is_active:
+            return
+        old_nick = player.nick
+        player.nick = new_nick
+        nick_update = NickUpdate(old_nick, new_nick)
+        event = self.make_event(
+            event_type='NICK_CHANGED',
+            payload=nick_update.to_json()
         )
         self.notify(event)
 
