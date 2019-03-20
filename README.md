@@ -48,5 +48,5 @@ $ python3.7 jeopardy/main.py -n <nick> -s <server_address> [-p <client_port>] [-
 * **-p, --client-port** - the port for the server to connect to in order to send events
 * **-d, --dark-mode** - use the dark theme in the GUI
 
-You only need to specify **-n** and **-s** once, or if you want to change them. Otherwise,
+You only need to specify **-n**, **-s**, and **-p** once, or if you want to change them. Otherwise,
 the previously-used value will be used on the next invocation of the program.

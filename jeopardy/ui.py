@@ -292,15 +292,46 @@ class JeopardyApp(ttk.Frame):
             TaggedText('\n', 'line'),
         ])
 
+    def show_detailed_stats(self):
+        # TODO - make me prettier!
+
+        def format_ratio(numerator, denominator):
+            ratio = 0.0 if denominator == 0 else (numerator / denominator) * 100
+            return f'{numerator:,}/{denominator:,} ({ratio:.2f}%)'
+
+        stats = [
+            '\n',
+            TaggedText('\n', 'line'),
+            TaggedText('Game Statistics\n', ('bold', 'centered')),
+            TaggedText('Questions Answered: ', 'bold'),
+            f'{format_ratio(self.stats.questions_answered, self.stats.questions_asked)}\n',
+            TaggedText('Correct Answers: ', 'bold'),
+            f'{format_ratio(self.stats.total_correct_answers, self.stats.total_answers)}\n',
+            TaggedText('\n', 'line'),
+            TaggedText('Player Statistics\n', ('bold', 'centered')),
+        ]
+
+        indent = ' ' * 4
+        for player in self.players.values():
+            stats.append(player.nick + '\n')
+            stats.append(f'{indent}Score: {self.format_score(player.score)}\n')
+            stats.append(f'{indent}Accuracy: {format_ratio(player.correct_answers, player.total_answers)}\n')
+
+        stats.append(TaggedText('\n', 'line'))
+        self.show_event(stats)
+
     def handle_user_input(self, event):
-        user_input = self.input_text.get()
+        user_input = self.input_text.get().strip()
         if not user_input:
             user_input = '/q'
         if user_input == '/h':
-            self.append_to_event_pane('Type "/q" to get a new question. Enter your answer to check if it is correct.')
+            # TODO improve this help text
+            self.show_event(['Type "/q" to get a new question. Enter your answer to check if it is correct.'])
         elif user_input == '/q':
             question = self.client.get_question()
             self.maybe_update_and_show_question(question)
+        elif user_input == '/s':
+            self.show_detailed_stats()
         elif user_input.startswith('/c '):
             message = user_input[3:]
             self.client.chat(message)
@@ -391,6 +422,7 @@ class JeopardyApp(ttk.Frame):
         while not self.stats_queue.empty():
             event = self.stats_queue.get_nowait()
             self.players[event.player.player_id] = event.player
+            # TODO - if event is a new answer, need to update global stats (total answers, total correct answers, questions answered)
 
         self.update_stats()
         self.update()
