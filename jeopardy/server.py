@@ -1,24 +1,14 @@
-import atexit
-
 import requests
 
 from flask import Flask, jsonify, request
 
-from flask_utils import error, get_player_id, no_content, to_json
-from jeopardy_game import Game, get_random_question
-from jeopardy_model import AnswerResponse, RegisterRequest
+from jeopardy.game import Game, get_random_question
+from jeopardy.model import AnswerResponse, RegisterRequest
+from jeopardy.utils.flask_utils import error, get_player_id, no_content, to_json
 
 
 app = Flask(__name__)
 game = Game()
-
-
-def shutdown():
-    print(f'Received shutdown signal, saving game file')
-    game.save_game_file()
-
-
-atexit.register(shutdown)
 
 
 @app.route('/')
@@ -119,3 +109,15 @@ def is_invalid_nick(nick, player_id):
         player.nick == nick and player.player_id != player_id
         for player in game.players.values()
     )
+
+
+def main():
+    try:
+        app.run(host='0.0.0.0', port=8008)  # TODO make port configurable
+    finally:
+        print('\nSaving game file')
+        game.save_game_file()
+
+
+if __name__ == '__main__':
+    main()

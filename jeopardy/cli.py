@@ -8,10 +8,10 @@ from multiprocessing import Process
 
 from flask import Flask, request
 
-from colorize import bold, green
-from flask_utils import error, no_content
-from jeopardy_client import JeopardyClient
-from jeopardy_model import Event, PlayerInfo, Question
+from jeopardy.client import JeopardyClient
+from jeopardy.model import Event, PlayerInfo, Question
+from jeopardy.utils.colorize import bold, green
+from jeopardy.utils.flask_utils import error, no_content
 
 
 SUPPRESS_FLASK_LOGGING = True

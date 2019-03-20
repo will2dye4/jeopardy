@@ -15,8 +15,8 @@ import requests
 from nltk.corpus import stopwords
 from nltk.stem.snowball import EnglishStemmer
 
-from flask_utils import get_player_id
-from jeopardy_model import Event, NickUpdate, PlayerInfo, Question
+from jeopardy.model import Event, NickUpdate, PlayerInfo, Question
+from jeopardy.utils.flask_utils import get_player_id
 
 
 MATCH_RATIO_THRESHOLD = 0.75
@@ -61,7 +61,7 @@ class Game:
                 del player['is_active']
                 players[player_id] = player
             with open(self.DEFAULT_FILEPATH, 'w') as game_file:
-                json.dump(players, game_file)
+                json.dump(players, game_file, sort_keys=True, indent=4)
 
     def register_player(self, register_req):
         player_id = register_req.player_id

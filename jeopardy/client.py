@@ -3,7 +3,7 @@ import uuid
 
 import requests
 
-from jeopardy_model import AnswerResponse, Question, RegisterRequest
+from jeopardy.model import AnswerResponse, Question, RegisterRequest
 
 
 class JeopardyClient:

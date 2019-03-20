@@ -6,8 +6,8 @@ import uuid
 
 from typing import Any, List
 
-from jeopardy_model import ClientConfig
-from jeopardy_ui import JeopardyApp
+from jeopardy.model import ClientConfig
+from jeopardy.ui import JeopardyApp
 
 
 class JeopardyMain:
@@ -109,6 +109,8 @@ class JeopardyMain:
                         existing_config = ClientConfig.from_json(json.load(config_file))
                         if existing_config.player_id == self.player_id:
                             save = True
+                        else:
+                            print(f'Not overwriting existing config for new player {self.player_id}')
                 except Exception:
                     save = True
             else:
@@ -120,7 +122,7 @@ class JeopardyMain:
                 if not os.path.exists(dirname):
                     os.mkdir(dirname)
                 with open(self.DEFAULT_CONFIG_FILEPATH, 'w') as config_file:
-                    json.dump(self.client_config.to_json(), config_file)
+                    json.dump(self.client_config.to_json(), config_file, sort_keys=True, indent=4)
 
 
 def str_to_bool(string: str) -> bool:

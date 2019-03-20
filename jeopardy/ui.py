@@ -9,9 +9,9 @@ from tkinter import ttk
 from multiprocessing import Process, Queue
 from threading import RLock
 
-from jeopardy_cli import ClientApp
-from jeopardy_client import JeopardyClient
-from jeopardy_model import NickUpdate, PlayerInfo, Question
+from jeopardy.cli import ClientApp
+from jeopardy.client import JeopardyClient
+from jeopardy.model import NickUpdate, PlayerInfo, Question
 
 
 SUPPRESS_FLASK_LOGGING = True
@@ -368,6 +368,7 @@ class JeopardyApp(ttk.Frame):
         elif event.event_type == 'NICK_CHANGED':
             update = NickUpdate.from_json(event.payload)
             self.host_says(f'{update.old_nick} is now known as {update.new_nick}')
+            self.show_stats_update(event)
         else:
             print(f'[!!] Received unexpected event: {event}')
 

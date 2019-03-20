@@ -2,7 +2,7 @@ from functools import wraps
 
 from flask import jsonify, request
 
-from jeopardy_model import Model
+from jeopardy.model import Model
 
 
 def to_json(view):
