@@ -98,3 +98,4 @@ class ClientConfig(Model):
     server_address: str
     nick: str
     dark_mode: bool = False
+    client_port: int = None

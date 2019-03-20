@@ -1,3 +1,6 @@
+import argparse
+import sys
+
 import requests
 
 from flask import Flask, jsonify, request
@@ -111,9 +114,21 @@ def is_invalid_nick(nick, player_id):
     )
 
 
-def main():
+def parse_args(args):
+    parser = argparse.ArgumentParser(description='Run a "Jeopardy!" server for players to connect to')
+    parser.add_argument('-s', '--server_address', default='0.0.0.0',
+                        help='The IP address on which to run the server')
+    parser.add_argument('-p', '--port', type=int, default=8008,
+                        help='The port on which to run the server')
+    return parser.parse_args(args)
+
+
+def main(args=None):
+    if args is None:
+        args = sys.argv[1:]
+    parsed_args = parse_args(args)
     try:
-        app.run(host='0.0.0.0', port=8008)  # TODO make port configurable
+        app.run(host=parsed_args.server_address, port=parsed_args.port)
     finally:
         print('\nSaving game file')
         game.save_game_file()

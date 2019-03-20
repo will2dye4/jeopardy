@@ -20,6 +20,7 @@ class JeopardyMain:
         parsed_args = self.parse_args(args)
         self._nick = parsed_args.nick
         self._server_address = parsed_args.server_address
+        self._client_port = parsed_args.client_port
         self._dark_mode = parsed_args.dark_mode or None
         self._player_id = None
         self.app = None
@@ -37,6 +38,8 @@ class JeopardyMain:
                             help='The nickname you want to use (must be unique)')
         parser.add_argument('-s', '--server', '--server-address', dest='server_address',
                             help='The IP and port of the server to connect to (e.g., "192.168.0.151:5000")')
+        parser.add_argument('-p', '--port', '--client-port', dest='client_port', type=int,
+                            help='The port for the server to connect to in order to send events')
         parser.add_argument('-d', '--dark', '--dark-mode', action='store_true', dest='dark_mode',
                             help='Use the dark theme for the GUI')
         return parser.parse_args(args)
@@ -56,6 +59,14 @@ class JeopardyMain:
             if not self._server_address:
                 raise RuntimeError('You must configure a server address!')
         return self._server_address
+
+    @property
+    def client_port(self) -> int:
+        if self._client_port is None:
+            port = self.get_config_value('JEOPARDY_CLIENT_PORT', 'client_port')
+            if port is not None:
+                self._client_port = int(port)
+        return self._client_port
 
     @property
     def nick(self) -> str:
@@ -81,7 +92,8 @@ class JeopardyMain:
             server_address=self.server_address,
             player_id=self.player_id,
             nick=self.app.nick,
-            dark_mode=self.app.dark_mode
+            dark_mode=self.app.dark_mode,
+            client_port=self.client_port
         )
 
     def get_config_value(self, env_key, config_key) -> Any:
@@ -95,6 +107,7 @@ class JeopardyMain:
     def run(self) -> None:
         self.app = JeopardyApp(
             server_address=self.server_address,
+            client_port=self.client_port,
             player_id=self.player_id,
             nick=self.nick,
             dark_mode=self.dark_mode

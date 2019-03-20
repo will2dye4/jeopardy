@@ -1,5 +1,4 @@
 import random
-import subprocess
 import tkinter as tk
 import uuid
 
@@ -8,6 +7,8 @@ from tkinter import font
 from tkinter import ttk
 from multiprocessing import Process, Queue
 from threading import RLock
+
+import requests
 
 from jeopardy.cli import ClientApp
 from jeopardy.client import JeopardyClient
@@ -44,7 +45,7 @@ class JeopardyApp(ttk.Frame):
         'To answer a question, simply enter your answer in the text box.\n'
     )
 
-    def __init__(self, master=None, server_address=None, player_id=None, nick=None, dark_mode=False):
+    def __init__(self, master=None, server_address=None, client_port=None, player_id=None, nick=None, dark_mode=False):
         if master is None:
             master = tk.Tk()
             master.minsize(width=400, height=300)
@@ -54,11 +55,13 @@ class JeopardyApp(ttk.Frame):
 
         self.player_id = player_id or str(uuid.uuid4())
         self.nick = nick or self.player_id
+        self.server_address = server_address
+        self.client_port = client_port or random.randrange(65000, 65536)
+        self.client = JeopardyClient(self.server_address, self.player_id)
         self.players = {}
-        self.client = JeopardyClient(server_address, self.player_id)
         self.current_question_id = None
         self.lock = RLock()
-        self.port = random.randrange(65000, 65536)
+
         self.app_process = None
         self.event_queue = Queue(maxsize=100)
         self.stats_queue = Queue(maxsize=100)
@@ -240,10 +243,14 @@ class JeopardyApp(ttk.Frame):
         self.stats_pane.configure(state=tk.DISABLED)
 
     def register(self):
-        external_ip = subprocess.getoutput(r'ifconfig | grep -A3 en0 | grep -E "inet\b" | cut -d" " -f2')
-        if not external_ip:
-            raise RuntimeError('Failed to find external IP')
-        self.client.register(f'{external_ip}:{self.port}', self.nick)
+        if 'localhost' in self.server_address or '127.0.0.1' in self.server_address:
+            client_address = 'localhost'  # shortcut for running locally
+        else:
+            resp = requests.get('https://api.ipify.org')
+            if not resp.ok:
+                raise RuntimeError(f'Failed to find external IP: {resp.text}')
+            client_address = resp.text
+        self.client.register(f'{client_address}:{self.client_port}', self.nick)
 
     def show_event(self, event_parts):
         self.event_queue.put_nowait(event_parts)
@@ -422,11 +429,11 @@ class JeopardyApp(ttk.Frame):
                 log.disabled = True
                 setattr(click, 'echo', lambda *a, **k: None)
                 setattr(click, 'secho', lambda *a, **k: None)
-            app.run(host='0.0.0.0', port=self.port)
+            app.run(host='0.0.0.0', port=self.client_port)
 
         app_process = Process(target=app_target)
         app_process.start()
-        print(f'Client app running on port {self.port}')
+        print(f'Client app running on port {self.client_port}')
         return app_process
 
     def close(self):

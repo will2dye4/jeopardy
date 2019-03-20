@@ -71,7 +71,7 @@ class JeopardyClient:
                 return None
             return answer_resp
         else:
-            print('Failed to submit answer to server')
+            print(f'Failed to submit answer to server: {resp.text}')
             return None
 
     def chat(self, message):
