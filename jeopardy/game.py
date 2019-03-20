@@ -15,7 +15,7 @@ import requests
 from nltk.corpus import stopwords
 from nltk.stem.snowball import EnglishStemmer
 
-from jeopardy.model import Event, NickUpdate, PlayerInfo, Question
+from jeopardy.model import Event, GameInfo, GameState, NickUpdate, PlayerInfo, Question
 from jeopardy.utils.flask_utils import get_player_id
 
 
@@ -35,6 +35,7 @@ class Game:
 
     def __init__(self, load_from_file=True):
         self.players = {}
+        self.stats = GameInfo()
         self.current_question = None
         self.in_progress = False
         self.lock = RLock()
@@ -47,21 +48,19 @@ class Game:
         with self.file_lock:
             if os.path.exists(self.DEFAULT_FILEPATH):
                 with open(self.DEFAULT_FILEPATH) as game_file:
-                    players = json.load(game_file)
-                    for player_id, player in players.items():
-                        player['client_address'] = None
-                        self.players[player_id] = PlayerInfo.from_json(player)
+                    game = GameState.from_json(json.load(game_file))
+                self.stats = game.statistics
+                self.players = game.players
 
     def save_game_file(self):
         with self.file_lock:
-            players = {}
-            for player_id, player in self.players.items():
-                player = player.to_json()
+            game_state = GameState(statistics=self.stats, players=self.players)
+            game = game_state.to_json()
+            for player in game['players'].values():
                 del player['client_address']
                 del player['is_active']
-                players[player_id] = player
             with open(self.DEFAULT_FILEPATH, 'w') as game_file:
-                json.dump(players, game_file, sort_keys=True, indent=4)
+                json.dump(game, game_file, sort_keys=True, indent=4)
 
     def register_player(self, register_req):
         player_id = register_req.player_id
@@ -70,6 +69,7 @@ class Game:
             player = self.players[player_id]
             print(f'Player {player_id} has moved from {player.client_address} to {register_req.address}')
             player.client_address = register_req.address
+            player.last_active_time = datetime.datetime.utcnow()
             if register_req.nick and register_req.nick != player.nick:
                 print(f'Player {player_id} (a/k/a {player.nick}) is now known as {register_req.nick}')
                 self.change_nick(register_req.nick)
@@ -110,6 +110,7 @@ class Game:
             player = None
         else:
             player = self.get_player(player_id)
+            player.last_active_time = datetime.datetime.utcnow()
         return Event(event_type=event_type, payload=payload, player=player)
 
     def notify(self, event):
@@ -138,6 +139,7 @@ class Game:
             if self.current_question is None or question is None:
                 self.current_question = question
                 if question is not None:
+                    self.stats.questions_asked += 1
                     event = self.make_event(
                         event_type='NEW_QUESTION',
                         payload=question.to_json()
@@ -153,9 +155,12 @@ class Game:
         correct, close = check_guess(guess, question.answer)
         player = self.get_player(get_player_id())
         player.total_answers += 1
+        self.stats.total_answers += 1
         if correct:
             player.correct_answers += 1
             player.score += question.value
+            self.stats.total_correct_answers += 1
+            self.stats.questions_answered += 1
             self.update_current_question(None)
         event = self.make_event(
             event_type='NEW_ANSWER',

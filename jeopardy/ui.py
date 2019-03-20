@@ -12,7 +12,7 @@ import requests
 
 from jeopardy.cli import ClientApp
 from jeopardy.client import JeopardyClient
-from jeopardy.model import NickUpdate, PlayerInfo, Question
+from jeopardy.model import GameInfo, NickUpdate, Question
 
 
 SUPPRESS_FLASK_LOGGING = True
@@ -59,6 +59,7 @@ class JeopardyApp(ttk.Frame):
         self.client_port = client_port or random.randrange(65000, 65536)
         self.client = JeopardyClient(self.server_address, self.player_id)
         self.players = {}
+        self.stats = GameInfo()
         self.current_question_id = None
         self.lock = RLock()
 
@@ -182,6 +183,7 @@ class JeopardyApp(ttk.Frame):
     def maybe_update_and_show_question(self, question):
         with self.lock:
             if not self.is_current_question(question.question_id):
+                self.stats.questions_asked += 1
                 self.update_current_question(question.question_id)
                 self.show_question(question)
 
@@ -193,18 +195,10 @@ class JeopardyApp(ttk.Frame):
         return len(longest_nick_player.nick)
 
     def fetch_stats(self):
-        resp = self.client.get('/')
-        if resp.ok:
-            resp_json = resp.json()
-            if resp_json:
-                self.players = {
-                    player_id: PlayerInfo.from_json(player)
-                    for player_id, player in resp_json['players'].items()
-                }
-            else:
-                print('Invalid response from server')
-        else:
-            print('Failed to fetch stats')
+        game = self.client.get_game_state()
+        if game is not None:
+            self.stats = game.statistics
+            self.players = game.players
 
     def update_stats(self):
         def get_stats(player, alignment):
@@ -326,12 +320,15 @@ class JeopardyApp(ttk.Frame):
             else:
                 player = self.players[self.player_id]
                 player.total_answers += 1
+                self.stats.total_answers += 1
                 self.player_says(self.nick, f'What is {user_input}?')
                 resp = self.client.answer(user_input)
                 if resp is not None and resp.is_correct:
                     host_response = f'{self.nick}, that is correct.'
                     player.correct_answers += 1
                     player.score += resp.value
+                    self.stats.total_correct_answers += 1
+                    self.stats.questions_answered += 1
                     self.update_current_question(None)
                 elif resp is not None and resp.is_close:
                     host_response = f'{self.nick}, can you be more specific?'

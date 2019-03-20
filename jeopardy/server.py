@@ -3,10 +3,10 @@ import sys
 
 import requests
 
-from flask import Flask, jsonify, request
+from flask import Flask, request
 
 from jeopardy.game import Game, get_random_question
-from jeopardy.model import AnswerResponse, RegisterRequest
+from jeopardy.model import AnswerResponse, GameState, RegisterRequest
 from jeopardy.utils.flask_utils import error, get_player_id, no_content, to_json
 
 
@@ -15,12 +15,9 @@ game = Game()
 
 
 @app.route('/')
+@to_json
 def root():
-    return jsonify({
-        'players': {
-            player_id: player.to_json() for player_id, player in game.players.items()
-        }
-    })
+    return GameState(statistics=game.stats, players=game.players)
 
 
 @app.route('/register', methods=['POST'])

@@ -3,7 +3,7 @@ import uuid
 
 import requests
 
-from jeopardy.model import AnswerResponse, Question, RegisterRequest
+from jeopardy.model import AnswerResponse, GameState, Question, RegisterRequest
 
 
 class JeopardyClient:
@@ -32,6 +32,18 @@ class JeopardyClient:
 
     def post(self, path, *args, **kwargs):
         return self.server_session.post(self.server_url(path), *args, **kwargs)
+
+    def get_game_state(self):
+        resp = self.get('/')
+        if resp.ok:
+            try:
+                return GameState.from_response(resp)
+            except (TypeError, ValueError) as e:
+                print(f'Failed to parse game state response: {e}')
+                return None
+        else:
+            print(f'Failed to fetch state from server: {resp.text}')
+            return None
 
     def register(self, address, nick):
         register_req = RegisterRequest(
@@ -65,11 +77,10 @@ class JeopardyClient:
         resp = self.post('/answer', data=guess)
         if resp.ok:
             try:
-                answer_resp = AnswerResponse.from_response(resp)
+                return AnswerResponse.from_response(resp)
             except (TypeError, ValueError) as e:
                 print(f'Failed to parse answer response: {e}')
                 return None
-            return answer_resp
         else:
             print(f'Failed to submit answer to server: {resp.text}')
             return None
