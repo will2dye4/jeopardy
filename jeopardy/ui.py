@@ -1,4 +1,5 @@
 import random
+import re
 import tkinter as tk
 import uuid
 
@@ -16,6 +17,7 @@ from jeopardy.model import GameInfo, NickUpdate, Question
 
 
 SUPPRESS_FLASK_LOGGING = True
+SINGLE_DIGIT_DECIMAL_RE = re.compile(r'(?P<digit>\.[1-9])0')
 
 
 TaggedText = namedtuple('TaggedText', ['text', 'tags'])
@@ -297,7 +299,9 @@ class JeopardyApp(ttk.Frame):
 
         def format_ratio(numerator, denominator):
             ratio = 0.0 if denominator == 0 else (numerator / denominator) * 100
-            return f'{numerator:,}/{denominator:,} ({ratio:.2f}%)'
+            ratio = f'{ratio:.2f}'.replace('.00', '')
+            ratio = SINGLE_DIGIT_DECIMAL_RE.sub(lambda m: m.group('digit'), ratio)
+            return f'{numerator:,}/{denominator:,} ({ratio}%)'
 
         stats = [
             '\n',
@@ -422,7 +426,11 @@ class JeopardyApp(ttk.Frame):
         while not self.stats_queue.empty():
             event = self.stats_queue.get_nowait()
             self.players[event.player.player_id] = event.player
-            # TODO - if event is a new answer, need to update global stats (total answers, total correct answers, questions answered)
+            if event.event_type == 'NEW_ANSWER':
+                self.stats.total_answers += 1
+                if event.payload['is_correct']:
+                    self.stats.total_correct_answers += 1
+                    self.stats.questions_answered += 1
 
         self.update_stats()
         self.update()
