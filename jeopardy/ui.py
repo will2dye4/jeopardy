@@ -47,7 +47,8 @@ class JeopardyApp(ttk.Frame):
         'To answer a question, simply enter your answer in the text box.\n'
     )
 
-    def __init__(self, master=None, server_address=None, client_port=None, player_id=None, nick=None, dark_mode=False):
+    def __init__(self, master=None, server_address=None, client_ip=None, client_port=None,
+                 player_id=None, nick=None, dark_mode=False):
         if master is None:
             master = tk.Tk()
             master.minsize(width=400, height=300)
@@ -58,6 +59,7 @@ class JeopardyApp(ttk.Frame):
         self.player_id = player_id or str(uuid.uuid4())
         self.nick = nick or self.player_id
         self.server_address = server_address
+        self.client_ip = client_ip
         self.client_port = client_port or random.randrange(65000, 65536)
         self.client = JeopardyClient(self.server_address, self.player_id)
         self.players = {}
@@ -239,7 +241,9 @@ class JeopardyApp(ttk.Frame):
         self.stats_pane.configure(state=tk.DISABLED)
 
     def register(self):
-        if 'localhost' in self.server_address or '127.0.0.1' in self.server_address:
+        if self.client_ip is not None:
+            client_address = self.client_ip
+        elif 'localhost' in self.server_address or '127.0.0.1' in self.server_address:
             client_address = 'localhost'  # shortcut for running locally
         else:
             resp = requests.get('https://api.ipify.org')

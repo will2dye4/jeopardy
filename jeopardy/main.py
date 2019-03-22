@@ -20,6 +20,7 @@ class JeopardyMain:
         parsed_args = self.parse_args(args)
         self._nick = parsed_args.nick
         self._server_address = parsed_args.server_address
+        self._client_ip = parsed_args.client_ip
         self._client_port = parsed_args.client_port
         self._dark_mode = parsed_args.dark_mode or None
         self._player_id = None
@@ -38,6 +39,8 @@ class JeopardyMain:
                             help='The nickname you want to use (must be unique)')
         parser.add_argument('-s', '--server', '--server-address', dest='server_address',
                             help='The IP and port of the server to connect to (e.g., "192.168.0.151:5000")')
+        parser.add_argument('-c', '--client-address', dest='client_ip',
+                            help='The IP for the server to connect to in order to send events')
         parser.add_argument('-p', '--port', '--client-port', dest='client_port', type=int,
                             help='The port for the server to connect to in order to send events')
         parser.add_argument('-d', '--dark', '--dark-mode', action='store_true', dest='dark_mode',
@@ -59,6 +62,12 @@ class JeopardyMain:
             if not self._server_address:
                 raise RuntimeError('You must configure a server address!')
         return self._server_address
+
+    @property
+    def client_ip(self) -> str:
+        if self._client_ip is None:
+            self._client_ip = self.get_config_value('JEOPARDY_CLIENT_IP', None)
+        return self._client_ip
 
     @property
     def client_port(self) -> int:
@@ -100,7 +109,7 @@ class JeopardyMain:
         env_value = os.getenv(env_key)
         if env_value is not None:
             return env_value
-        if self._client_config is not None:
+        if self._client_config is not None and config_key is not None:
             return getattr(self._client_config, config_key)
         return None
 
