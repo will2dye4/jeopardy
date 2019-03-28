@@ -116,6 +116,7 @@ class JeopardyMain:
     def run(self) -> None:
         self.app = JeopardyApp(
             server_address=self.server_address,
+            client_ip=self.client_ip,
             client_port=self.client_port,
             player_id=self.player_id,
             nick=self.nick,
