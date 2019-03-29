@@ -1,5 +1,10 @@
 # jeopardy
 
+## Dedication
+
+This project is dedicated to Mr. William D. Dye, my father and one of the best
+armchair *Jeopardy!* players I have ever known.
+
 ## Installing
 
 ```
