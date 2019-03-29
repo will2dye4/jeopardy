@@ -1,5 +1,5 @@
 clean:
-	pip uninstall -y jeopardy
+	pip3 uninstall -y jeopardy
 
 install:
-	pip install --ignore-installed .
+	pip3 install --ignore-installed --user .
