@@ -4,7 +4,7 @@ import os
 import sys
 import uuid
 
-from typing import Any, List
+from typing import Any, List, Optional
 
 from jeopardy.model import ClientConfig
 from jeopardy.ui import JeopardyApp
@@ -105,7 +105,7 @@ class JeopardyMain:
             client_port=self.client_port
         )
 
-    def get_config_value(self, env_key, config_key) -> Any:
+    def get_config_value(self, env_key: str, config_key: Optional[str]) -> Any:
         env_value = os.getenv(env_key)
         if env_value is not None:
             return env_value

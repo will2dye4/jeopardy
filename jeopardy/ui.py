@@ -8,12 +8,13 @@ from tkinter import font
 from tkinter import ttk
 from multiprocessing import Process, Queue
 from threading import RLock
+from typing import Iterable, Optional, Union
 
 import requests
 
 from jeopardy.cli import ClientApp
 from jeopardy.client import JeopardyClient
-from jeopardy.model import GameInfo, NickUpdate, Question
+from jeopardy.model import Event, GameInfo, NickUpdate, PlayerInfo, Question
 
 
 SUPPRESS_FLASK_LOGGING = True
@@ -48,8 +49,9 @@ class JeopardyApp(ttk.Frame):
         'To answer a question, simply enter your answer in the text box.\n'
     )
 
-    def __init__(self, master=None, server_address=None, client_ip=None, client_port=None,
-                 player_id=None, nick=None, dark_mode=False):
+    def __init__(self, master: Optional[tk.Tk] = None, server_address: Optional[str] = None,
+                 client_ip: Optional[str] = None, client_port: Optional[int] = None,
+                 player_id: Optional[str] = None, nick: Optional[str] = None, dark_mode: bool = False) -> None:
         if master is None:
             master = tk.Tk()
             master.minsize(width=400, height=300)
@@ -100,7 +102,7 @@ class JeopardyApp(ttk.Frame):
         self.input_text = tk.StringVar(value='')
         self.input_pane = self.create_input_pane()
 
-    def configure_style(self):
+    def configure_style(self) -> None:
         style = ttk.Style()
         style.configure('TScrollbar', borderwidth=0)
         style.configure('Line.TFrame', background='black', foreground='black')
@@ -113,7 +115,7 @@ class JeopardyApp(ttk.Frame):
         style.configure('TEntry', background=input_background, foreground=self.default_foreground,
                         borderwidth=0, highlightthickness=0)
 
-    def configure_tags(self):
+    def configure_tags(self) -> None:
         if self.dark_mode:
             inactive_player_foreground = self.LIGHT_GRAY
         else:
@@ -144,7 +146,7 @@ class JeopardyApp(ttk.Frame):
             pane.tag_configure('stats_heading', background=self.JEOPARDY_VIOLET, font=self.bold_font,
                                foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
 
-    def create_main_pane(self):
+    def create_main_pane(self) -> ttk.Frame:
         main_pane = ttk.Frame(self, height=600, width=600, style='Main.TFrame')
         main_pane.grid(row=0, column=0, sticky=tk.N + tk.S + tk.E + tk.W)
         self.stats_pane = self.create_stats_pane(main_pane)
@@ -156,7 +158,7 @@ class JeopardyApp(ttk.Frame):
         main_pane.columnconfigure(2, weight=1)
         return main_pane
 
-    def create_stats_pane(self, parent):
+    def create_stats_pane(self, parent: ttk.Frame) -> tk.Text:
         background = self.MEDIUM_GRAY if self.dark_mode else self.LIGHT_GRAY
         pane = tk.Text(parent, height=50, width=20, font=self.default_font, background=background,
                        foreground=self.default_foreground, borderwidth=0, highlightthickness=0, state=tk.DISABLED,
@@ -164,7 +166,7 @@ class JeopardyApp(ttk.Frame):
         pane.grid(row=0, column=0, sticky=tk.N + tk.S)
         return pane
 
-    def create_event_pane(self, parent):
+    def create_event_pane(self, parent: ttk.Frame) -> tk.Text:
         pane = tk.Text(parent, height=50, width=80, font=self.default_font, background=self.default_background,
                        foreground=self.default_foreground, borderwidth=0, highlightthickness=0, wrap=tk.WORD,
                        state=tk.DISABLED, takefocus=0, undo=False)
@@ -174,20 +176,20 @@ class JeopardyApp(ttk.Frame):
         scrollbar.grid(row=0, column=3, sticky=tk.N + tk.S)
         return pane
 
-    def create_input_pane(self):
+    def create_input_pane(self) -> ttk.Entry:
         pane = ttk.Entry(self, width=80, font=self.default_font, style='TEntry', textvariable=self.input_text)
         pane.bind('<KeyPress-Return>', self.handle_user_input)
         pane.grid(row=1, column=0, sticky=tk.E + tk.W)
         return pane
 
-    def is_current_question(self, question_id):
+    def is_current_question(self, question_id: str) -> bool:
         return self.current_question_id is not None and self.current_question_id == question_id
 
-    def update_current_question(self, question_id):
+    def update_current_question(self, question_id: Optional[str]) -> None:
         with self.lock:
             self.current_question_id = question_id
 
-    def maybe_update_and_show_question(self, question):
+    def maybe_update_and_show_question(self, question: Question) -> None:
         with self.lock:
             if not self.is_current_question(question.question_id):
                 self.stats.questions_asked += 1
@@ -195,20 +197,20 @@ class JeopardyApp(ttk.Frame):
                 self.show_question(question)
 
     @property
-    def longest_player_nick(self):
+    def longest_player_nick(self) -> int:
         if not self.players:
             return 0
         longest_nick_player = max(self.players.values(), key=lambda p: len(p.nick))
         return len(longest_nick_player.nick)
 
-    def fetch_stats(self):
+    def fetch_stats(self) -> None:
         game = self.client.get_game_state()
         if game is not None:
             self.stats = game.statistics
             self.players = game.players
 
-    def update_stats(self):
-        def get_stats(player, alignment):
+    def update_stats(self) -> None:
+        def get_stats(player: PlayerInfo, alignment: int) -> str:
             return f'{player.nick:{len(player.nick) + alignment}}{self.format_score(player.score)}\n'
 
         if not self.players:
@@ -243,7 +245,7 @@ class JeopardyApp(ttk.Frame):
 
         self.stats_pane.configure(state=tk.DISABLED)
 
-    def register(self):
+    def register(self) -> None:
         if self.client_ip is not None:
             client_address = self.client_ip
         elif 'localhost' in self.server_address or '127.0.0.1' in self.server_address:
@@ -255,13 +257,13 @@ class JeopardyApp(ttk.Frame):
             client_address = resp.text
         self.client.register(f'{client_address}:{self.client_port}', self.nick)
 
-    def show_event(self, event_parts):
+    def show_event(self, event_parts: Iterable[Union[str, TaggedText]]) -> None:
         self.event_queue.put_nowait(event_parts)
 
-    def show_stats_update(self, event):
+    def show_stats_update(self, event: Event) -> None:
         self.stats_queue.put_nowait(event)
 
-    def append_to_event_pane(self, event_parts):
+    def append_to_event_pane(self, event_parts: Iterable[Union[str, TaggedText]]) -> None:
         self.event_pane.configure(state=tk.NORMAL)
         for event_part in event_parts:
             if isinstance(event_part, TaggedText):
@@ -276,7 +278,7 @@ class JeopardyApp(ttk.Frame):
         self.event_pane.configure(state=tk.DISABLED)
         self.event_pane.see(tk.END)
 
-    def player_says(self, player, message_parts):
+    def player_says(self, player: str, message_parts: Union[str, Iterable[Union[str, TaggedText]]]) -> None:
         if isinstance(message_parts, str):
             message_parts = [message_parts]
         self.show_event([
@@ -284,14 +286,14 @@ class JeopardyApp(ttk.Frame):
             *message_parts
         ])
 
-    def host_says(self, message):
+    def host_says(self, message: str) -> None:
         self.player_says(self.HOST, message)
 
     @staticmethod
-    def format_score(score):
+    def format_score(score: int) -> str:
         return f'${score:,}'
 
-    def show_question(self, question):
+    def show_question(self, question: Question) -> None:
         self.show_event([
             '\n',
             TaggedText('\n', 'line'),
@@ -301,8 +303,8 @@ class JeopardyApp(ttk.Frame):
             TaggedText('\n', 'line'),
         ])
 
-    def show_detailed_stats(self):
-        def format_ratio(numerator, denominator):
+    def show_detailed_stats(self) -> None:
+        def format_ratio(numerator: int, denominator: int) -> str:
             ratio = 0.0 if denominator == 0 else (numerator / denominator) * 100
             ratio = f'{ratio:.2f}'.replace('.00', '')
             ratio = SINGLE_DIGIT_DECIMAL_RE.sub(lambda m: m.group('digit'), ratio)
@@ -337,7 +339,7 @@ class JeopardyApp(ttk.Frame):
         ])
         self.show_event(stats)
 
-    def handle_user_input(self, event):
+    def handle_user_input(self, event: tk.Event) -> None:
         user_input = self.input_text.get().strip()
         if not user_input:
             user_input = '/q'
@@ -385,7 +387,7 @@ class JeopardyApp(ttk.Frame):
                 self.host_says(host_response)
         self.input_text.set('')
 
-    def handle(self, event):
+    def handle(self, event: Event) -> None:
         if event.player is not None and event.player.player_id == self.player_id:
             return  # don't respond to our own events
         if event.event_type == 'NEW_GAME':
@@ -424,7 +426,7 @@ class JeopardyApp(ttk.Frame):
         else:
             print(f'[!!] Received unexpected event: {event}')
 
-    def tick(self):
+    def tick(self) -> None:
         if not self.question_queue.empty():
             question = self.question_queue.get_nowait()
             if question is None:
@@ -449,7 +451,7 @@ class JeopardyApp(ttk.Frame):
         self.update()
         self.after(self.DEFAULT_TICK_DELAY_MILLIS, self.tick)
 
-    def run(self):
+    def run(self) -> None:
         self.app_process = self.start_app_process()
         self.register()
         self.client.start_game()
@@ -468,10 +470,10 @@ class JeopardyApp(ttk.Frame):
 
         super().mainloop()
 
-    def start_app_process(self):
+    def start_app_process(self) -> Process:
         app = ClientApp(self.player_id, self)
 
-        def app_target():
+        def app_target() -> None:
             if SUPPRESS_FLASK_LOGGING:
                 import click
                 import logging
@@ -486,7 +488,7 @@ class JeopardyApp(ttk.Frame):
         print(f'Client app running on port {self.client_port}')
         return app_process
 
-    def close(self):
+    def close(self) -> None:
         try:
             self.client.close()
         finally:

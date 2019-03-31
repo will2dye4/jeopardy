@@ -9,13 +9,14 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor as Pool
 from difflib import SequenceMatcher
 from threading import Lock, RLock
+from typing import Any, Dict, Optional, Tuple
 
 import requests
 
 from nltk.corpus import stopwords
 from nltk.stem.snowball import EnglishStemmer
 
-from jeopardy.model import Event, GameInfo, GameState, NickUpdate, PlayerInfo, Question
+from jeopardy.model import Event, GameInfo, GameState, NickUpdate, PlayerInfo, Question, RegisterRequest
 from jeopardy.utils.flask_utils import get_player_id
 
 
@@ -33,7 +34,7 @@ class Game:
 
     DEFAULT_FILEPATH = 'jeopardy_game.json'
 
-    def __init__(self, load_from_file=True):
+    def __init__(self, load_from_file: bool = True) -> None:
         self.players = {}
         self.stats = GameInfo()
         self.current_question = None
@@ -44,7 +45,7 @@ class Game:
         if load_from_file:
             self.load_game_file()
 
-    def load_game_file(self):
+    def load_game_file(self) -> None:
         with self.file_lock:
             if os.path.exists(self.DEFAULT_FILEPATH):
                 with open(self.DEFAULT_FILEPATH) as game_file:
@@ -52,7 +53,7 @@ class Game:
                 self.stats = game.statistics
                 self.players = game.players
 
-    def save_game_file(self):
+    def save_game_file(self) -> None:
         with self.file_lock:
             game_state = GameState(statistics=self.stats, players=self.players)
             game = game_state.to_json()
@@ -62,7 +63,7 @@ class Game:
             with open(self.DEFAULT_FILEPATH, 'w') as game_file:
                 json.dump(game, game_file, sort_keys=True, indent=4)
 
-    def register_player(self, register_req):
+    def register_player(self, register_req: RegisterRequest) -> None:
         player_id = register_req.player_id
         if player_id in self.players and self.players[player_id].is_active:
             # if they're already active, just update address/nick and return
@@ -91,17 +92,17 @@ class Game:
         event = self.make_event('NEW_PLAYER')
         self.notify(event)
 
-    def remove_player(self, player_id):
+    def remove_player(self, player_id: str) -> None:
         if player_id in self.players:
             self.players[player_id].client_address = None
             self.players[player_id].is_active = False
             event = self.make_event('PLAYER_LEFT')
             self.notify(event)
 
-    def get_player(self, player_id):
+    def get_player(self, player_id: str) -> Optional[PlayerInfo]:
         return self.players.get(player_id)
 
-    def make_event(self, event_type, payload=None):
+    def make_event(self, event_type: str, payload: Optional[Dict[str, Any]] = None) -> Event:
         if payload is None:
             payload = {}
         try:
@@ -113,10 +114,10 @@ class Game:
             player.last_active_time = datetime.datetime.utcnow()
         return Event(event_type=event_type, payload=payload, player=player)
 
-    def notify(self, event):
+    def notify(self, event: Event) -> None:
         self.pool.submit(self.notify_players, event)
 
-    def notify_players(self, event):
+    def notify_players(self, event: Event) -> None:
         event_json = event.to_json()
         for player_id, player in self.players.items():
             if player.is_active:
@@ -124,7 +125,7 @@ class Game:
                 if not resp.ok:
                     print(f'Failed to notify player: {resp.text}')
 
-    def start(self):
+    def start(self) -> None:
         with self.lock:
             if not self.in_progress:
                 self.notify(self.make_event('NEW_GAME'))
@@ -134,7 +135,7 @@ class Game:
                 self.in_progress = True
                 self.update_current_question(question)
 
-    def update_current_question(self, question):
+    def update_current_question(self, question: Optional[Question]) -> None:
         with self.lock:
             if self.current_question is None or question is None:
                 self.current_question = question
@@ -147,10 +148,10 @@ class Game:
                     self.notify(event)
                     self.pool.submit(self.question_timeout, question)
 
-    def check_guess(self, guess):
+    def check_guess(self, guess: str) -> Tuple[bool, bool, int]:
         with self.lock:
             if self.current_question is None:
-                return False
+                return False, False, 0
             question = self.current_question
         correct, close = check_guess(guess, question.answer)
         player = self.get_player(get_player_id())
@@ -174,14 +175,14 @@ class Game:
         self.notify(event)
         return correct, close, question.value
 
-    def post_chat_message(self, message):
+    def post_chat_message(self, message: str) -> None:
         event = self.make_event(
             event_type='CHAT_MESSAGE',
             payload={'message': message}
         )
         self.notify(event)
 
-    def change_nick(self, new_nick):
+    def change_nick(self, new_nick: str) -> None:
         player = self.get_player(get_player_id())
         if not player.is_active:
             return
@@ -194,10 +195,10 @@ class Game:
         )
         self.notify(event)
 
-    def is_current_question(self, question_id):
+    def is_current_question(self, question_id: str) -> bool:
         return self.current_question is not None and self.current_question.question_id == question_id
 
-    def question_timeout(self, question):
+    def question_timeout(self, question: Question) -> None:
         timeout = datetime.datetime.utcnow() + datetime.timedelta(seconds=30)
         while self.is_current_question(question.question_id) and datetime.datetime.utcnow() < timeout:
             time.sleep(0.1)
@@ -211,7 +212,7 @@ class Game:
                 self.notify(event)
 
 
-def get_random_question():
+def get_random_question() -> Optional[Question]:
     resp = requests.get('http://www.trivialbuzz.com/api/v1/questions/random.json')
     if not resp.ok:
         return None
@@ -228,7 +229,7 @@ def get_random_question():
     )
 
 
-def sanitize_question(question):
+def sanitize_question(question: str) -> str:
     # replace '<a href="...">text</a>' with 'text'
     question = URL_RE.sub(lambda match: match.group('text'), question)
     # replace HTML line breaks with newlines
@@ -239,12 +240,12 @@ def sanitize_question(question):
     return question.strip()
 
 
-def sanitize_answer(answer):
+def sanitize_answer(answer: str) -> str:
     # strip out backslashes and leading/trailing whitespace
     return answer.replace('\\', '').strip()
 
 
-def check_guess(guess, correct_answer):
+def check_guess(guess: str, correct_answer: str) -> Tuple[bool, bool]:
     potential_answers = ANSWER_RE.findall(correct_answer)
     if len(potential_answers) == 2:
         for potential_answer in potential_answers:
@@ -264,5 +265,5 @@ def check_guess(guess, correct_answer):
     return len(matched) == len(answer_tokens), len(matched) > 0
 
 
-def process_token(token):
+def process_token(token: str) -> str:
     return stemmer.stem(token.lower().translate(REMOVE_PUNCTUATION_TRANSLATIONS))

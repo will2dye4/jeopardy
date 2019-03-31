@@ -1,13 +1,15 @@
 import argparse
 import sys
 
+from typing import Optional, Union
+
 import requests
 
 from flask import Flask, request
 
 from jeopardy.game import Game, get_random_question
-from jeopardy.model import AnswerResponse, GameState, RegisterRequest
-from jeopardy.utils.flask_utils import error, get_player_id, no_content, to_json
+from jeopardy.model import AnswerResponse, GameState, Question, RegisterRequest
+from jeopardy.utils.flask_utils import FlaskResponse, error, get_player_id, no_content, to_json
 
 
 app = Flask(__name__)
@@ -16,12 +18,12 @@ game = Game()
 
 @app.route('/')
 @to_json
-def root():
+def root() -> GameState:
     return GameState(statistics=game.stats, players=game.players)
 
 
 @app.route('/register', methods=['POST'])
-def register():
+def register() -> FlaskResponse:
     try:
         register_req = RegisterRequest.from_request(request)
     except (TypeError, ValueError) as e:
@@ -44,7 +46,7 @@ def register():
 
 
 @app.route('/goodbye', methods=['POST'])
-def goodbye():
+def goodbye() -> FlaskResponse:
     player_id = get_player_id()
     game.remove_player(player_id)
     print(f'Removed player {player_id}')
@@ -52,7 +54,7 @@ def goodbye():
 
 
 @app.route('/start', methods=['POST'])
-def start_game():
+def start_game() -> FlaskResponse:
     try:
         game.start()
     except RuntimeError as e:
@@ -62,7 +64,7 @@ def start_game():
 
 @app.route('/question')
 @to_json
-def get_question():
+def get_question() -> Union[Optional[Question], FlaskResponse]:
     with game.lock:
         if game.current_question is not None:
             return game.current_question
@@ -75,7 +77,7 @@ def get_question():
 
 @app.route('/answer', methods=['POST'])
 @to_json
-def submit_answer():
+def submit_answer() -> Union[AnswerResponse, FlaskResponse]:
     if game.current_question is None:
         return error('There is no current question', status=400)
 
@@ -84,13 +86,13 @@ def submit_answer():
 
 
 @app.route('/chat', methods=['POST'])
-def chat():
+def chat() -> FlaskResponse:
     game.post_chat_message(request.get_data(as_text=True))
     return no_content()
 
 
 @app.route('/nick', methods=['POST'])
-def change_nick():
+def change_nick() -> FlaskResponse:
     player_id = get_player_id()
     if player_id not in game.players or not game.players[player_id].is_active:
         return error('Cannot change nick for an inactive player', status=400)
@@ -104,14 +106,14 @@ def change_nick():
     return no_content()
 
 
-def is_invalid_nick(nick, player_id):
+def is_invalid_nick(nick, player_id) -> bool:
     return any(
         player.nick == nick and player.player_id != player_id
         for player in game.players.values()
     )
 
 
-def parse_args(args):
+def parse_args(args) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Run a "Jeopardy!" server for players to connect to')
     parser.add_argument('-s', '--server_address', default='0.0.0.0',
                         help='The IP address on which to run the server')
@@ -120,7 +122,7 @@ def parse_args(args):
     return parser.parse_args(args)
 
 
-def main(args=None):
+def main(args=None) -> None:
     if args is None:
         args = sys.argv[1:]
     parsed_args = parse_args(args)
