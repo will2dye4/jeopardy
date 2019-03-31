@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import requests
 
@@ -106,14 +106,14 @@ def change_nick() -> FlaskResponse:
     return no_content()
 
 
-def is_invalid_nick(nick, player_id) -> bool:
+def is_invalid_nick(nick: str, player_id: str) -> bool:
     return any(
         player.nick == nick and player.player_id != player_id
         for player in game.players.values()
     )
 
 
-def parse_args(args) -> argparse.Namespace:
+def parse_args(args: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Run a "Jeopardy!" server for players to connect to')
     parser.add_argument('-s', '--server_address', default='0.0.0.0',
                         help='The IP address on which to run the server')
@@ -122,7 +122,7 @@ def parse_args(args) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-def main(args=None) -> None:
+def main(args: Optional[List[str]] = None) -> None:
     if args is None:
         args = sys.argv[1:]
     parsed_args = parse_args(args)
