@@ -12,7 +12,12 @@ from jeopardy.model import AnswerResponse, GameState, Question, RegisterRequest
 from jeopardy.utils.flask_utils import FlaskResponse, error, get_player_id, no_content, to_json
 
 
+MAX_NICK_LENGTH = 12
+
+
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 1024
+
 game = Game()
 
 
@@ -31,9 +36,14 @@ def register() -> FlaskResponse:
 
     if not register_req.address:
         return error('No client address provided', status=400)
-
+    if not register_req.player_id:
+        return error('No player ID provided', status=400)
+    if not register_req.nick and register_req.player_id not in game.players:
+        return error('No nickname provided', status=400)
     if is_invalid_nick(register_req.nick, register_req.player_id):
-        return error(f'Nick {register_req.nick} is already in use', status=400)
+        return error(f'Nickname {register_req.nick} is already in use', status=400)
+    if len(register_req.nick) > MAX_NICK_LENGTH:
+        return error(f'Maximum nickname length is {MAX_NICK_LENGTH} characters', status=400)
 
     # ping the client to make sure it's up
     resp = requests.get(f'http://{register_req.address}/id')
@@ -95,12 +105,14 @@ def chat() -> FlaskResponse:
 def change_nick() -> FlaskResponse:
     player_id = get_player_id()
     if player_id not in game.players or not game.players[player_id].is_active:
-        return error('Cannot change nick for an inactive player', status=400)
-    new_nick = request.get_data(as_text=True)
+        return error('Cannot change nickname for an inactive player', status=400)
+    new_nick = request.get_data(as_text=True).strip()
     if not new_nick:
         return error('No nickname provided', status=400)
     if is_invalid_nick(new_nick, player_id):
-        return error(f'Nick {new_nick} is already in use', status=400)
+        return error(f'Nickname {new_nick} is already in use', status=400)
+    if len(new_nick) > MAX_NICK_LENGTH:
+        return error(f'Maximum nickname length is {MAX_NICK_LENGTH} characters', status=400)
     if new_nick != game.players[player_id].nick:
         game.change_nick(new_nick)
     return no_content()

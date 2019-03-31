@@ -7,6 +7,7 @@ import uuid
 from typing import Any, List, Optional
 
 from jeopardy.model import ClientConfig
+from jeopardy.server import MAX_NICK_LENGTH
 from jeopardy.ui import JeopardyApp
 
 
@@ -81,8 +82,6 @@ class JeopardyMain:
     def nick(self) -> str:
         if self._nick is None:
             self._nick = self.get_config_value('JEOPARDY_NICKNAME', 'nick')
-            if self._nick is None:
-                self._nick = self.player_id
         return self._nick
 
     @property
@@ -114,6 +113,17 @@ class JeopardyMain:
         return None
 
     def run(self) -> None:
+        if self.nick is not None and len(self.nick) > MAX_NICK_LENGTH:
+            print(f'Your nickname must not be longer than {MAX_NICK_LENGTH} characters.')
+            self._nick = None
+
+        while self._nick is None:
+            nick = input(f'Enter a nickname (up to {MAX_NICK_LENGTH} characters): ').strip()
+            if nick and len(nick) <= MAX_NICK_LENGTH:
+                self._nick = nick
+            else:
+                print('Sorry, please try again.')
+
         self.app = JeopardyApp(
             server_address=self.server_address,
             client_ip=self.client_ip,
