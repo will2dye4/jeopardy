@@ -44,6 +44,7 @@ class JeopardyApp(ttk.Frame):
         'To fetch a new question, enter "/q" (or just press Enter). '
         'To send a chat message, enter "/c" followed by your message. '
         'To change your nickname, enter "/n " followed by the new nickname. '
+        'To see detailed statistics, enter "/s". '
         'To answer a question, simply enter your answer in the text box.\n'
     )
 
@@ -140,6 +141,8 @@ class JeopardyApp(ttk.Frame):
                                font=(self.FONT_FAMILY, 16), justify=tk.CENTER, spacing1=3, spacing3=3)
             pane.tag_configure('question_text', background=self.default_background, foreground=self.default_foreground,
                                justify=tk.CENTER, lmargin1=5, lmargin2=5, rmargin=5, spacing1=3, spacing3=3)
+            pane.tag_configure('stats_heading', background=self.JEOPARDY_VIOLET, font=self.bold_font,
+                               foreground='white', justify=tk.CENTER, spacing1=3, spacing3=3)
 
     def create_main_pane(self):
         main_pane = ttk.Frame(self, height=600, width=600, style='Main.TFrame')
@@ -299,8 +302,6 @@ class JeopardyApp(ttk.Frame):
         ])
 
     def show_detailed_stats(self):
-        # TODO - make me prettier!
-
         def format_ratio(numerator, denominator):
             ratio = 0.0 if denominator == 0 else (numerator / denominator) * 100
             ratio = f'{ratio:.2f}'.replace('.00', '')
@@ -310,22 +311,30 @@ class JeopardyApp(ttk.Frame):
         stats = [
             '\n',
             TaggedText('\n', 'line'),
-            TaggedText('Game Statistics\n', ('bold', 'centered')),
-            TaggedText('Questions Answered: ', 'bold'),
-            f'{format_ratio(self.stats.questions_answered, self.stats.questions_asked)}\n',
-            TaggedText('Correct Answers: ', 'bold'),
-            f'{format_ratio(self.stats.total_correct_answers, self.stats.total_answers)}\n',
-            TaggedText('\n', 'line'),
-            TaggedText('Player Statistics\n', ('bold', 'centered')),
+            TaggedText('Player Accuracy\n', 'stats_heading'),
+            '\n',
         ]
 
-        indent = ' ' * 4
-        for player in self.players.values():
-            stats.append(player.nick + '\n')
-            stats.append(f'{indent}Score: {self.format_score(player.score)}\n')
-            stats.append(f'{indent}Accuracy: {format_ratio(player.correct_answers, player.total_answers)}\n')
+        max_nick_len = max(len(p.nick) for p in self.players.values())
+        spacing = ' ' * 4
+        for player in sorted(self.players.values(), key=lambda p: p.nick.lower()):
+            ratio = format_ratio(player.correct_answers, player.total_answers)
+            stats_string = f'{player.nick:{max_nick_len}}{spacing}{ratio}\n'
+            stats.append(TaggedText(stats_string, 'centered'))
 
-        stats.append(TaggedText('\n', 'line'))
+        questions_answered = f'{format_ratio(self.stats.questions_answered, self.stats.questions_asked)}\n'
+        correct_answers = f'{format_ratio(self.stats.total_correct_answers, self.stats.total_answers)}\n'
+        stats.extend([
+            '\n',
+            TaggedText('Game Statistics\n', 'stats_heading'),
+            '\n',
+            TaggedText('Questions Answered: ', ('bold', 'centered')),
+            TaggedText(questions_answered, 'centered'),
+            TaggedText('Correct Answers: ', ('bold', 'centered')),
+            TaggedText(correct_answers, 'centered'),
+            '\n',
+            TaggedText('\n', 'line'),
+        ])
         self.show_event(stats)
 
     def handle_user_input(self, event):
