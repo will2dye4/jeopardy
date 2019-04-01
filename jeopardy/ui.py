@@ -1,3 +1,4 @@
+import datetime
 import random
 import re
 import tkinter as tk
@@ -14,6 +15,7 @@ import requests
 
 from jeopardy.cli import ClientApp
 from jeopardy.client import JeopardyClient
+from jeopardy.game import QUESTION_TIMEOUT_SECONDS
 from jeopardy.model import Event, GameInfo, NickUpdate, PlayerInfo, Question
 
 
@@ -39,6 +41,20 @@ class JeopardyApp(ttk.Frame):
     JEOPARDY_GOLD = '#CC8E3C'
     JEOPARDY_LIGHT_BLUE = '#115FF4'
     JEOPARDY_VIOLET = '#8D2AB5'
+
+    STATUS_COLORS = [
+        '#00FF00',
+        '#00F000',
+        '#3CF000',
+        '#78F000',
+        '#B4F000',
+        '#F0F000',
+        '#F0B400',
+        '#F07800',
+        '#F03C00',
+        '#F00000',
+        '#FF0000',
+    ]
 
     WELCOME_TEXT = (
         'Use the text box at the bottom to enter commands and answers. '
@@ -68,6 +84,7 @@ class JeopardyApp(ttk.Frame):
         self.players = {}
         self.stats = GameInfo()
         self.current_question_id = None
+        self.question_timeout = None
         self.lock = RLock()
 
         self.app_process = None
@@ -92,6 +109,8 @@ class JeopardyApp(ttk.Frame):
 
         self.stats_pane = None
         self.event_pane = None
+        self.status_canvas = None
+        self.status_indicator = None
         self.grid(sticky=tk.N + tk.S + tk.E + tk.W)
         self.configure_style()
         self.default_font = font.Font(self, family=self.FONT_FAMILY, size=14)
@@ -177,9 +196,19 @@ class JeopardyApp(ttk.Frame):
         return pane
 
     def create_input_pane(self) -> ttk.Entry:
-        pane = ttk.Entry(self, width=80, font=self.default_font, style='TEntry', textvariable=self.input_text)
+        lower_pane = ttk.Frame(self, height=30, width=600, style='Main.TFrame')
+        lower_pane.grid(row=1, column=0)
+        lower_pane.rowconfigure(0, weight=1)
+        lower_pane.columnconfigure(1, weight=1)
+
+        self.status_canvas = tk.Canvas(lower_pane, height=30, width=30)
+        self.status_canvas.grid(row=0, column=0, sticky=tk.W)
+        self.status_indicator = self.status_canvas.create_oval(9, 9, 27, 27)
+        self.status_canvas.itemconfigure(self.status_indicator, fill=self.JEOPARDY_VIOLET)
+
+        pane = ttk.Entry(lower_pane, width=100, font=self.default_font, style='TEntry', textvariable=self.input_text)
         pane.bind('<KeyPress-Return>', self.handle_user_input)
-        pane.grid(row=1, column=0, sticky=tk.E + tk.W)
+        pane.grid(row=0, column=1, sticky=tk.E + tk.W)
         return pane
 
     def is_current_question(self, question_id: str) -> bool:
@@ -188,6 +217,11 @@ class JeopardyApp(ttk.Frame):
     def update_current_question(self, question_id: Optional[str]) -> None:
         with self.lock:
             self.current_question_id = question_id
+            if question_id is None:
+                self.question_timeout = None
+            else:
+                # assume the question was just asked
+                self.question_timeout = datetime.datetime.utcnow() + datetime.timedelta(seconds=QUESTION_TIMEOUT_SECONDS + 1)
 
     def maybe_update_and_show_question(self, question: Question) -> None:
         with self.lock:
@@ -426,6 +460,21 @@ class JeopardyApp(ttk.Frame):
         else:
             print(f'[!!] Received unexpected event: {event}')
 
+    def get_status_indicator_color(self) -> str:
+        if self.question_timeout is None:
+            return self.JEOPARDY_VIOLET
+
+        seconds_remaining = (self.question_timeout - datetime.datetime.utcnow()).seconds
+        one_tenth = QUESTION_TIMEOUT_SECONDS // 10
+        color_index = len(self.STATUS_COLORS) - (seconds_remaining // one_tenth)
+        color_index = min(max(color_index, 0), len(self.STATUS_COLORS) - 1)
+        return self.STATUS_COLORS[color_index]
+
+        # percent_remaining = seconds_remaining / QUESTION_TIMEOUT_SECONDS
+        # green_value = int(percent_remaining * 0xFF)
+        # red_value = 0xFF - green_value
+        # return f'#{red_value:02X}{green_value:02X}00'
+
     def tick(self) -> None:
         if not self.question_queue.empty():
             question = self.question_queue.get_nowait()
@@ -446,6 +495,8 @@ class JeopardyApp(ttk.Frame):
                 if event.payload['is_correct']:
                     self.stats.total_correct_answers += 1
                     self.stats.questions_answered += 1
+
+        self.status_canvas.itemconfigure(self.status_indicator, fill=self.get_status_indicator_color())
 
         self.update_stats()
         self.update()

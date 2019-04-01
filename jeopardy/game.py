@@ -21,6 +21,7 @@ from jeopardy.utils.flask_utils import get_player_id
 
 
 MATCH_RATIO_THRESHOLD = 0.75
+QUESTION_TIMEOUT_SECONDS = 30
 REMOVE_PUNCTUATION_TRANSLATIONS = {ord(char): None for char in string.punctuation}
 
 ANSWER_RE = re.compile(r'\([^()]*\)|[^()]+')
@@ -199,7 +200,7 @@ class Game:
         return self.current_question is not None and self.current_question.question_id == question_id
 
     def question_timeout(self, question: Question) -> None:
-        timeout = datetime.datetime.utcnow() + datetime.timedelta(seconds=30)
+        timeout = datetime.datetime.utcnow() + datetime.timedelta(seconds=QUESTION_TIMEOUT_SECONDS)
         while self.is_current_question(question.question_id) and datetime.datetime.utcnow() < timeout:
             time.sleep(0.1)
         with self.lock:
